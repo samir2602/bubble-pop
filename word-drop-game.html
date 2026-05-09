@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Bubble Pop — Word Game</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg1:#1a1a2e;--bg2:#16213e;--surface:#1f2d4a;--card:#243352;--border:#ffffff14;
+  --cyan:#00e5ff;--pink:#ff6eb4;--yellow:#ffe135;--green:#4dff91;
+  --orange:#ff9f43;--purple:#c77dff;--text:#f0f4ff;--muted:#8899bb;--danger:#ff4757;
+}
+html,body{height:100%;background:linear-gradient(160deg,var(--bg1),var(--bg2));color:var(--text);font-family:'Nunito',sans-serif;overflow:hidden;user-select:none}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;background-image:radial-gradient(circle,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:28px 28px;z-index:0}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 40% 30% at 15% 20%,rgba(0,229,255,0.06),transparent),
+  radial-gradient(ellipse 35% 25% at 85% 70%,rgba(255,110,180,0.06),transparent)}
+
+/* ══ SCREENS ══ */
+.screen{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,var(--bg1),var(--bg2));transition:opacity 0.35s;padding:16px}
+.screen.hidden{opacity:0;pointer-events:none}
+
+/* LOGIN */
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:28px;padding:36px 40px;max-width:400px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:16px;align-items:center;position:relative;overflow:hidden}
+.login-box::before{content:'';position:absolute;inset:0;border-radius:28px;background:linear-gradient(135deg,rgba(255,255,255,0.04),transparent);pointer-events:none}
+.login-emoji{font-size:52px;line-height:1}
+.login-title{font-family:'Fredoka One';font-size:34px;letter-spacing:2px;background:linear-gradient(135deg,var(--cyan),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.login-sub{font-size:12px;color:var(--muted);font-weight:700;letter-spacing:1px;text-align:center}
+.login-input{width:100%;padding:13px 18px;border-radius:14px;border:2px solid var(--border);background:var(--surface);color:var(--text);font-family:'Nunito';font-size:16px;font-weight:700;outline:none;letter-spacing:2px;transition:border-color 0.2s,box-shadow 0.2s}
+.login-input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,229,255,0.15)}
+.login-input::placeholder{color:var(--muted);letter-spacing:1px;font-size:13px;font-weight:600}
+.login-btn{width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,var(--cyan),var(--purple));color:#fff;font-family:'Fredoka One';font-size:20px;letter-spacing:2px;cursor:pointer;transition:transform 0.15s,box-shadow 0.2s;box-shadow:0 6px 24px rgba(0,229,255,0.3)}
+.login-btn:hover{transform:translateY(-2px)}
+.login-btn:active{transform:scale(0.97)}
+.login-err{font-size:12px;color:var(--danger);font-weight:700;min-height:16px;text-align:center}
+.login-toggle{font-size:12px;color:var(--muted);font-weight:700;text-align:center}
+.login-toggle b{color:var(--cyan);text-decoration:underline;cursor:pointer}
+
+/* LEADERBOARD */
+#lb-overlay{position:fixed;inset:0;z-index:200;background:rgba(16,21,46,0.96);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;transition:opacity 0.3s}
+#lb-overlay.hidden{opacity:0;pointer-events:none}
+.lb-box{background:var(--card);border:1px solid var(--border);border-radius:24px;padding:24px 22px 20px;max-width:540px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 80px rgba(0,0,0,0.6)}
+.lb-header{display:flex;align-items:center;justify-content:space-between}
+.lb-title{font-family:'Fredoka One';font-size:22px;color:var(--yellow);letter-spacing:2px}
+.lb-header-right{display:flex;gap:6px}
+.lb-close{background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:16px;width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color 0.2s}
+.lb-close:hover{color:var(--text)}
+.lb-tabs{display:flex;gap:5px;flex-wrap:wrap}
+.lb-tab{padding:5px 14px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);font-family:'Nunito';font-size:11px;font-weight:800;cursor:pointer;letter-spacing:1px;transition:all 0.2s}
+.lb-tab.active{background:var(--surface);border-color:var(--cyan);color:var(--cyan)}
+.lb-scroll{overflow-y:auto;flex:1;display:flex;flex-direction:column;min-height:140px}
+.lb-scroll::-webkit-scrollbar{width:3px}
+.lb-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+/* cols: rank name wpm acc score */
+.lb-row{display:grid;align-items:center;padding:8px 12px;border-radius:10px;transition:background 0.15s;border-bottom:1px solid rgba(255,255,255,0.04);grid-template-columns:36px 1fr 56px 56px 60px}
+.lb-row:last-child{border-bottom:none}
+.lb-row:hover{background:var(--surface)}
+.lb-row.me{background:rgba(0,229,255,0.08)!important;border:1px solid rgba(0,229,255,0.2)!important;margin:2px 0}
+.lb-row.hdr{opacity:0.4;font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:900;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.08)!important}
+.lb-row.sess{grid-template-columns:1fr 44px 50px 50px 56px}
+.lb-rank{font-family:'Fredoka One';font-size:16px;text-align:center}
+.lb-name{font-weight:800;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-num{font-family:'Fredoka One';font-size:14px;text-align:right}
+.lb-muted{font-size:11px;color:var(--muted);font-weight:700;text-align:right}
+.lb-my-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding-top:10px;border-top:1px solid var(--border)}
+.lb-stat-cell{background:var(--surface);border-radius:10px;padding:8px 6px;text-align:center}
+.lb-stat-val{font-family:'Fredoka One';font-size:17px;color:var(--cyan)}
+.lb-stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700}
+.lb-actions{display:flex;gap:8px}
+.lb-play-btn{flex:1;padding:10px;border-radius:12px;border:none;background:linear-gradient(135deg,var(--pink),var(--purple));color:#fff;font-family:'Fredoka One';font-size:15px;letter-spacing:1px;cursor:pointer;transition:transform 0.15s;box-shadow:0 4px 16px rgba(255,110,180,0.35)}
+.lb-play-btn:hover{transform:translateY(-2px)}
+.lb-cont-btn{flex:1;padding:10px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-family:'Fredoka One';font-size:15px;letter-spacing:1px;cursor:pointer;transition:all 0.15s}
+.lb-cont-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.lb-empty{text-align:center;color:var(--muted);font-size:13px;font-weight:700;padding:30px 0}
+
+/* GAME UI */
+#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh;padding:10px 14px;gap:8px}
+#top-bar{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px;min-width:0}
+#hud{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;flex:1;min-width:0}
+.hud-cell{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:5px 6px;display:flex;flex-direction:column;align-items:center;gap:1px;position:relative;overflow:hidden;min-width:0}
+.hud-cell::before{content:'';position:absolute;inset:0;border-radius:12px;background:linear-gradient(135deg,rgba(255,255,255,0.04),transparent);pointer-events:none}
+.hud-label{font-size:8px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;font-weight:700;white-space:nowrap}
+.hud-val{font-family:'Fredoka One';font-size:20px;line-height:1.1;color:var(--cyan)}
+.score-val{color:var(--yellow)}.level-val{color:var(--pink)}.cleared-val{color:var(--green)}.wpm-val{color:var(--orange)}
+#timer-ring{position:relative;width:42px;height:42px;flex-shrink:0}
+#timer-ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.ring-track{fill:none;stroke:rgba(255,255,255,0.08);stroke-width:3.5}
+.ring-fill{fill:none;stroke:var(--yellow);stroke-width:3.5;stroke-linecap:round;transition:stroke-dashoffset 0.9s linear,stroke 0.4s}
+#timer-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Fredoka One';font-size:12px;color:var(--yellow);transition:color 0.4s}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.1}}
+.tblink{animation:blink 0.4s step-end infinite}
+#user-badge{display:flex;align-items:center;gap:5px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:5px 10px;cursor:pointer;transition:border-color 0.2s;max-width:110px}
+#user-badge:hover{border-color:var(--pink)}
+.ub-name{font-family:'Fredoka One';font-size:12px;color:var(--cyan);max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lb-btn{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:5px 10px;cursor:pointer;font-size:16px;transition:border-color 0.2s;flex-shrink:0}
+#lb-btn:hover{border-color:var(--yellow)}
+#canvas{flex:1;position:relative;background:linear-gradient(180deg,rgba(255,255,255,0.02) 0%,rgba(0,0,0,0.15) 100%);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:inset 0 0 60px rgba(0,0,0,0.3),0 4px 24px rgba(0,0,0,0.3)}
+.danger-wave{position:absolute;bottom:0;left:0;right:0;height:4px;border-radius:0 0 18px 18px;background:linear-gradient(90deg,transparent,var(--danger),var(--pink),var(--danger),transparent);animation:wpulse 1.4s ease-in-out infinite}
+@keyframes wpulse{0%,100%{opacity:.35}50%{opacity:1;box-shadow:0 0 14px var(--danger)}}
+#level-badge{position:absolute;top:10px;right:12px;font-family:'Fredoka One';font-size:12px;letter-spacing:2px;color:rgba(255,255,255,0.2)}
+#lvl-banner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Fredoka One';font-size:40px;letter-spacing:4px;color:var(--yellow);text-shadow:0 0 30px rgba(255,225,53,0.6);pointer-events:none;z-index:15;display:none;text-align:center}
+@keyframes lvl-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(0.3)}25%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}75%{opacity:1;transform:translate(-50%,-55%) scale(1)}100%{opacity:0;transform:translate(-50%,-65%) scale(0.9)}}
+.bubble{position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform 0.1s}
+.bubble:hover{transform:scale(1.06)}
+.bubble-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.bubble-word{position:relative;z-index:2;font-family:'Fredoka One';font-size:14px;letter-spacing:1.5px;text-align:center;line-height:1;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.35);padding:0 6px}
+.blet{display:inline-block;transition:color 0.1s}
+.blet.lit{color:var(--yellow)!important;text-shadow:0 0 8px rgba(255,225,53,0.8)}
+@keyframes bw{0%,100%{transform:scale(1)}30%{transform:scale(1.07) rotate(-2deg)}60%{transform:scale(1.04) rotate(1.5deg)}}
+.bubble.targeted{animation:bw 0.5s ease-in-out}
+#input-row{display:flex;gap:6px;flex-shrink:0;min-width:0}
+#word-input{flex:1;min-width:0;background:var(--card);border:2px solid var(--border);border-radius:14px;color:var(--text);font-family:'Nunito';font-size:16px;font-weight:700;padding:9px 14px;letter-spacing:2px;outline:none;caret-color:var(--cyan);transition:border-color 0.2s,box-shadow 0.2s}
+#word-input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,229,255,0.15)}
+#word-input::placeholder{color:var(--muted);letter-spacing:1px;font-size:12px;font-weight:600}
+#start-btn{background:linear-gradient(135deg,var(--pink),var(--purple));border:none;border-radius:14px;color:#fff;font-family:'Fredoka One';font-size:16px;padding:0 18px;cursor:pointer;letter-spacing:1px;transition:transform 0.15s,box-shadow 0.2s;box-shadow:0 4px 16px rgba(255,110,180,0.4);white-space:nowrap;flex-shrink:0}
+#start-btn:hover{transform:translateY(-2px)}
+#lives-hud{display:flex;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:0 10px;font-size:13px;color:var(--pink);font-weight:700;letter-spacing:2px;flex-shrink:0}
+#hint{text-align:center;font-size:10px;color:var(--muted);letter-spacing:1px;flex-shrink:0;padding-bottom:2px;font-weight:700}
+#overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(22,33,62,0.93);border-radius:18px;z-index:20;backdrop-filter:blur(6px)}
+.ov-title{font-family:'Fredoka One';font-size:46px;letter-spacing:4px;background:linear-gradient(135deg,var(--cyan),var(--pink),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.ov-emoji{font-size:44px;line-height:1}
+.ov-sub{font-size:13px;color:var(--muted);letter-spacing:1px;text-align:center;line-height:2;font-weight:700}
+.ov-tip{font-size:12px;color:var(--muted);border:2px solid var(--border);padding:8px 20px;border-radius:12px;letter-spacing:1px;font-weight:700}
+.ov-score{font-family:'Fredoka One';font-size:56px;background:linear-gradient(135deg,var(--yellow),var(--orange));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1}
+.ov-lvl-info{display:flex;gap:6px;font-size:11px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center;padding:0 10px}
+.ov-lvl-info span{padding:4px 10px;border:1.5px solid var(--border);border-radius:10px}
+
+/* responsive — smaller screens */
+@media(max-width:600px){
+  #app{padding:6px 8px;gap:5px}
+  #hud{gap:3px}
+  .hud-val{font-size:16px}
+  .hud-label{font-size:7px}
+  #user-badge{padding:4px 8px;max-width:80px}
+  .ub-name{font-size:11px;max-width:52px}
+  #lb-btn{padding:4px 8px;font-size:14px}
+  #word-input{font-size:14px;padding:8px 10px;letter-spacing:1px}
+  #start-btn{font-size:14px;padding:0 12px}
+  #lives-hud{padding:0 8px;font-size:12px;letter-spacing:1px}
+  .ov-title{font-size:36px}
+  .ov-score{font-size:48px}
+}
+
+/* effects */
+.dart{position:absolute;pointer-events:none;z-index:10;width:6px;height:28px;border-radius:3px 3px 0 0;box-shadow:0 0 10px rgba(255,225,53,0.7);animation:dart-fly var(--dur,.18s) ease-in forwards}
+.dart::after{content:'';position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid var(--yellow)}
+@keyframes dart-fly{0%{transform:translate(0,0)}100%{transform:translate(var(--dx),var(--dy))}}
+.confetti{position:absolute;pointer-events:none;z-index:9;border-radius:2px;animation:conf-fly var(--dur,.7s) ease-out forwards}
+@keyframes conf-fly{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}100%{transform:translate(var(--cx),var(--cy)) rotate(var(--cr)) scale(.3);opacity:0}}
+.pop-ring{position:absolute;pointer-events:none;border-radius:50%;border:3px solid currentColor;z-index:8;animation:pr-out .45s ease-out forwards}
+@keyframes pr-out{0%{transform:translate(-50%,-50%) scale(.2);opacity:1}100%{transform:translate(-50%,-50%) scale(2.8);opacity:0}}
+.pop-ripple{position:absolute;pointer-events:none;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.6),rgba(255,255,255,0) 70%);z-index:9;transform:translate(-50%,-50%);animation:rip-out .35s ease-out forwards}
+@keyframes rip-out{0%{opacity:.9;transform:translate(-50%,-50%) scale(.3)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.8)}}
+.score-pop{position:absolute;pointer-events:none;font-family:'Fredoka One';font-size:20px;color:var(--yellow);filter:drop-shadow(0 0 8px rgba(255,225,53,.8));animation:sfloat 1s ease-out forwards;z-index:12}
+@keyframes sfloat{0%{opacity:1;transform:translateY(0) scale(1)}20%{transform:translateY(-10px) scale(1.2)}100%{opacity:0;transform:translateY(-70px) scale(.8)}}
+@keyframes lp{0%{opacity:1;transform:scale(1)}40%{opacity:1;transform:scale(1.8)}100%{opacity:0;transform:scale(0) rotate(20deg)}}
+.blet.popping{animation:lp .25s ease-out forwards;pointer-events:none}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}60%{transform:translateX(6px)}}
+.input-shake{animation:shake .3s ease}
+#flash{position:fixed;inset:0;pointer-events:none;z-index:99;opacity:0}
+#flash.happy{animation:fl .25s ease-out;background:rgba(77,255,145,.08)}
+#flash.sad{animation:fl .35s ease-out;background:rgba(255,71,87,.15)}
+#flash.lvl{animation:fl .4s ease-out;background:rgba(255,225,53,.1)}
+@keyframes fl{0%{opacity:1}100%{opacity:0}}
+.deco-bubble{position:absolute;border-radius:50%;pointer-events:none;border:1.5px solid rgba(255,255,255,.06);animation:db linear infinite}
+@keyframes db{0%{transform:translateY(0) scale(1);opacity:.4}50%{opacity:.7;transform:translateY(-28px) scale(1.04)}100%{transform:translateY(0) scale(1);opacity:.4}}
+.wpm-flash{position:absolute;top:10px;left:14px;font-family:'Fredoka One';font-size:13px;color:var(--orange);animation:sfloat 1.2s ease-out forwards;z-index:12;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="flash"></div>
+
+<!-- LOGIN SCREEN -->
+<div class="screen" id="login-screen">
+  <div class="login-box">
+    <div class="login-emoji">🫧</div>
+    <div class="login-title">BUBBLE POP</div>
+    <p class="login-sub" id="login-mode-label">SIGN IN TO PLAY</p>
+    <input class="login-input" id="login-name" type="text" placeholder="your name" maxlength="18" autocomplete="off" spellcheck="false"/>
+    <input class="login-input" id="login-pass" type="password" placeholder="password" maxlength="32" autocomplete="off"/>
+    <div class="login-err" id="login-err"></div>
+    <button class="login-btn" id="login-btn">LET'S PLAY! 🎮</button>
+    <div class="login-toggle">
+      <span id="login-toggle-text">No account?</span>&nbsp;<b id="login-switch">Sign up</b>
+    </div>
+  </div>
+</div>
+
+<!-- LEADERBOARD OVERLAY -->
+<div id="lb-overlay" class="hidden">
+  <div class="lb-box">
+    <div class="lb-header">
+      <div class="lb-title">🏆 Global Rankings</div>
+      <div class="lb-header-right">
+        <button class="lb-close" id="lb-close">✕</button>
+      </div>
+    </div>
+    <div class="lb-tabs">
+      <button class="lb-tab active" data-tab="wpm">🚀 WPM</button>
+      <button class="lb-tab" data-tab="score">⭐ Score</button>
+      <button class="lb-tab" data-tab="accuracy">🎯 Accuracy</button>
+      <button class="lb-tab" data-tab="sessions">📋 My Games</button>
+    </div>
+    <div class="lb-scroll" id="lb-content"></div>
+    <div class="lb-my-stats" id="lb-my-stats"></div>
+    <div class="lb-actions">
+      <button class="lb-play-btn" id="lb-play-btn">Play Again 🎮</button>
+      <button class="lb-cont-btn" id="lb-cont-btn">Continue ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME UI -->
+<div id="app">
+  <div id="top-bar">
+    <div id="hud">
+      <div class="hud-cell"><span class="hud-label">Score</span><span class="hud-val score-val" id="score">0</span></div>
+      <div class="hud-cell"><span class="hud-label">Level</span><span class="hud-val level-val" id="level-val">1</span></div>
+      <div class="hud-cell" style="padding:4px;justify-content:center">
+        <div id="timer-ring">
+          <svg viewBox="0 0 44 44"><circle class="ring-track" cx="22" cy="22" r="18"/><circle class="ring-fill" id="ring-arc" cx="22" cy="22" r="18" stroke-dasharray="113.1" stroke-dashoffset="0"/></svg>
+          <div id="timer-center">3:00</div>
+        </div>
+      </div>
+      <div class="hud-cell"><span class="hud-label">Popped</span><span class="hud-val cleared-val" id="cleared">0</span></div>
+      <div class="hud-cell"><span class="hud-label">WPM</span><span class="hud-val wpm-val" id="wpm-display">0</span></div>
+    </div>
+    <button id="lb-btn">🏆</button>
+    <div id="user-badge"><span>🫧</span><span class="ub-name" id="ub-name">—</span></div>
+  </div>
+
+  <div id="canvas">
+    <div class="danger-wave"></div>
+    <div id="level-badge">LVL 1</div>
+    <div id="lvl-banner"></div>
+    <div id="overlay">
+      <div class="ov-emoji">🫧</div>
+      <div class="ov-title">BUBBLE POP</div>
+      <p class="ov-sub">Type the word · Press ENTER to fire a dart! 🎯<br>Survive the timer to level up!</p>
+      <div class="ov-lvl-info">
+        <span>🟢 Lvl 1 · 3:00</span><span>🟡 Lvl 2 · 2:30</span>
+        <span>🟠 Lvl 3 · 2:00</span><span>🔴 Lvl 4+ · faster!</span>
+      </div>
+      <p class="ov-tip">▶ Click START or press any key!</p>
+    </div>
+  </div>
+
+  <div id="input-row">
+    <input id="word-input" type="text" placeholder="type a word then hit Enter 🎯" autocomplete="off" spellcheck="false"/>
+    <button id="start-btn">START 🎮</button>
+    <div id="lives-hud">♥ ♥ ♥</div>
+  </div>
+  <div id="hint">✏️ Type the word → ENTER to fire dart · Click any letter to pop it directly</div>
+</div>
+
+<script type="module">
+import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc, updateDoc,
+         collection, getDocs, query, orderBy, limit,
+         serverTimestamp }         from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+document.addEventListener('DOMContentLoaded', async () => {
+
+// ══════════════════════════════════════════════════════════════
+//  FIREBASE SETUP — paste your config values below
+//  1. console.firebase.google.com → your project
+//  2. Settings ⚙️ → Project settings → Your apps → copy config
+//  3. Firestore Database → Rules → paste open rules → Publish
+// ══════════════════════════════════════════════════════════════
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBosqCCoUrkrl5uxbBXUvgIdzx-x7tNd7M",
+  authDomain: "bubble-game-9d168.firebaseapp.com",
+  projectId: "bubble-game-9d168",
+  storageBucket: "bubble-game-9d168.firebasestorage.app",
+  messagingSenderId: "300400641879",
+  appId: "1:300400641879:web:26ea3f6ff6af2be413e012"z
+};
+
+// ── Check if Firebase config has been filled in ───────
+const FB_READY = !Object.values(firebaseConfig).some(v => v.startsWith('PASTE_YOUR'));
+
+let fbApp, db;
+if(FB_READY){
+  fbApp = initializeApp(firebaseConfig);
+  db    = getFirestore(fbApp);
+} else {
+  // Show setup warning on login screen
+  window.addEventListener('DOMContentLoaded', ()=>{
+    const box = document.querySelector('.login-box');
+    const warn = document.createElement('div');
+    warn.style.cssText = 'width:100%;padding:10px 14px;border-radius:12px;background:rgba(255,71,87,0.15);border:1px solid rgba(255,71,87,0.4);font-size:11px;color:#ff8fa0;font-weight:700;text-align:center;line-height:1.7';
+    warn.innerHTML = '⚠️ Firebase not configured yet!<br>Open this file, find <code style="color:#ff6eb4">firebaseConfig</code><br>and paste your Firebase project values.';
+    box.appendChild(warn);
+  });
+}
+
+// ── helpers ───────────────────────────────────────────
+function hashPass(s){ let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h)^s.charCodeAt(i); return (h>>>0).toString(36); }
+
+// localStorage — login session + personal session history + fallback users/board
+const LS = {
+  saveSession(name, passHash){ localStorage.setItem('bp2_session', JSON.stringify({name, passHash})); },
+  loadSession(){ try{ return JSON.parse(localStorage.getItem('bp2_session')); }catch{ return null; } },
+  clearSession(){ localStorage.removeItem('bp2_session'); },
+  getSessions(name){ try{ return JSON.parse(localStorage.getItem('bp2_sess_'+name.toLowerCase())||'[]'); }catch{ return []; } },
+  saveSessions(name, d){ localStorage.setItem('bp2_sess_'+name.toLowerCase(), JSON.stringify(d.slice(0,30))); },
+  // fallback users & board (used when Firebase not configured)
+  getUsers(){ try{ return JSON.parse(localStorage.getItem('bp2_users')||'{}'); }catch{ return {}; } },
+  saveUsers(u){ localStorage.setItem('bp2_users', JSON.stringify(u)); },
+  getBoard(){ try{ return JSON.parse(localStorage.getItem('bp2_board')||'[]'); }catch{ return []; } },
+  saveBoard(b){ localStorage.setItem('bp2_board', JSON.stringify(b.slice(0,200))); },
+};
+
+// ── AUTH ──────────────────────────────────────────────
+async function authLogin(name, pass){
+  const key = name.toLowerCase().trim();
+
+  // Always try localStorage first (instant, offline-safe)
+  const localUsers = LS.getUsers();
+  if(localUsers[key]){
+    if(localUsers[key].passHash !== hashPass(pass)) return {ok:false, msg:'Wrong password 🙈'};
+    return {ok:true, name: localUsers[key].displayName};
+  }
+
+  // If not in localStorage, try Firebase
+  if(!FB_READY) return {ok:false, msg:'User not found — sign up first!'};
+  try {
+    const snap = await getDoc(doc(db,'users',key));
+    if(!snap.exists()) return {ok:false, msg:'User not found — sign up first!'};
+    if(snap.data().passHash !== hashPass(pass)) return {ok:false, msg:'Wrong password 🙈'};
+    // Cache user locally so future logins are instant
+    localUsers[key] = { displayName: snap.data().displayName, passHash: snap.data().passHash };
+    LS.saveUsers(localUsers);
+    return {ok:true, name: snap.data().displayName};
+  } catch(e){
+    console.warn('Firebase login failed, error:', e.code||e.message);
+    return {ok:false, msg:'User not found — sign up first!'};
+  }
+}
+
+async function authSignup(name, pass){
+  const trimmed = name.trim();
+  if(trimmed.length < 2) return {ok:false, msg:'Name must be at least 2 chars'};
+  if(pass.length   < 3)  return {ok:false, msg:'Password must be at least 3 chars'};
+  const key  = trimmed.toLowerCase();
+  const hash = hashPass(pass);
+
+  // Check localStorage first
+  const localUsers = LS.getUsers();
+  if(localUsers[key]) return {ok:false, msg:'Name already taken 😅 try another'};
+
+  // Save locally always (so login works even if Firebase fails)
+  localUsers[key] = { displayName: trimmed, passHash: hash, created: Date.now() };
+  LS.saveUsers(localUsers);
+
+  // Also save to Firebase if configured (for cross-device)
+  if(FB_READY){
+    try {
+      const snap = await getDoc(doc(db,'users',key));
+      if(snap.exists()){
+        // Someone else already has this name on Firebase
+        delete localUsers[key]; LS.saveUsers(localUsers);
+        return {ok:false, msg:'Name already taken 😅 try another'};
+      }
+      await setDoc(doc(db,'users',key),{
+        displayName: trimmed, passHash: hash, createdAt: serverTimestamp()
+      });
+    } catch(e){
+      // Firebase failed — that's ok, local account still works
+      console.warn('Firebase signup failed (local account created):', e.code||e.message);
+    }
+  }
+  return {ok:true, name: trimmed};
+}
+
+// auto-login from saved session
+async function tryAutoLogin(){
+  const saved = LS.loadSession();
+  if(!saved?.name) return false;
+  // Verify against local users (fast, always works)
+  const users = LS.getUsers();
+  const key   = saved.name.toLowerCase();
+  if(users[key] && users[key].passHash === saved.passHash){
+    loginUser(saved.name, saved.passHash); return true;
+  }
+  LS.clearSession(); return false;
+}
+
+function loginUser(name, passHash){
+  currentUser = name;
+  LS.saveSession(name, passHash);
+  document.getElementById('ub-name').textContent = name;
+  document.getElementById('login-screen').classList.add('hidden');
+}
+
+// ── LEADERBOARD ───────────────────────────────────────
+async function getBoard(orderField='bestWpm', lim=100){
+  if(!FB_READY){
+    // Fallback: localStorage board
+    let board = LS.getBoard();
+    if(orderField==='bestWpm')   board.sort((a,b)=>(b.bestWpm||0)-(a.bestWpm||0));
+    else if(orderField==='bestScore') board.sort((a,b)=>(b.bestScore||0)-(a.bestScore||0));
+    else board.sort((a,b)=>(b.correct||0)-(a.correct||0));
+    return board.slice(0,lim);
+  }
+  try {
+    const q    = query(collection(db,'leaderboard'), orderBy(orderField,'desc'), limit(lim));
+    const snap = await getDocs(q);
+    return snap.docs.map(d=>({...d.data()}));
+  } catch(e){ console.error(e); return []; }
+}
+
+async function saveToBoard(data){
+  if(!FB_READY){
+    // Fallback: localStorage board
+    const board = LS.getBoard();
+    const idx   = board.findIndex(r=>r.name===data.name);
+    if(idx===-1){
+      board.push({name:data.name,bestWpm:data.wpm,bestScore:data.score,
+        totalWords:data.words,correct:data.correct,attempts:data.attempts,
+        bestLevel:data.level,lastPlayed:data.date});
+    } else {
+      const r=board[idx];
+      if(data.wpm   > (r.bestWpm||0))   r.bestWpm   = data.wpm;
+      if(data.score > (r.bestScore||0)){ r.bestScore = data.score; r.bestLevel = data.level; }
+      r.totalWords=(r.totalWords||0)+data.words;
+      r.correct   =(r.correct||0)   +data.correct;
+      r.attempts  =(r.attempts||0)  +data.attempts;
+      r.lastPlayed=data.date;
+    }
+    LS.saveBoard(board);
+    return;
+  }
+  const key = data.name.toLowerCase();
+  try {
+    const snap = await getDoc(doc(db,'leaderboard',key));
+    if(!snap.exists()){
+      await setDoc(doc(db,'leaderboard',key),{
+        name:data.name, bestWpm:data.wpm, bestScore:data.score,
+        totalWords:data.words, correct:data.correct, attempts:data.attempts,
+        bestLevel:data.level, lastPlayed:serverTimestamp()
+      });
+    } else {
+      const cur = snap.data();
+      await updateDoc(doc(db,'leaderboard',key),{
+        bestWpm:   Math.max(cur.bestWpm||0,   data.wpm),
+        bestScore: Math.max(cur.bestScore||0, data.score),
+        totalWords:(cur.totalWords||0)+data.words,
+        correct:   (cur.correct||0)   +data.correct,
+        attempts:  (cur.attempts||0)  +data.attempts,
+        bestLevel: Math.max(cur.bestLevel||1, data.level),
+        lastPlayed:serverTimestamp()
+      });
+    }
+  } catch(e){ console.error('saveToBoard error',e); }
+}
+
+// ── LOGIN UI ──────────────────────────────────────────
+let currentUser = null;
+let isSignup = false;
+
+function setLoginMode(su){
+  isSignup = su;
+  document.getElementById('login-mode-label').textContent = su ? 'CREATE ACCOUNT' : 'SIGN IN TO PLAY';
+  document.getElementById('login-btn').textContent        = su ? "LET'S GO! 🚀"   : "LET'S PLAY! 🎮";
+  document.getElementById('login-toggle-text').textContent= su ? 'Have an account?' : 'No account?';
+  document.getElementById('login-switch').textContent     = su ? 'Sign in' : 'Sign up';
+  document.getElementById('login-err').textContent = '';
+}
+
+document.getElementById('login-switch').addEventListener('click', ()=>setLoginMode(!isSignup));
+
+async function doLogin(){
+  const name  = document.getElementById('login-name').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-err');
+  const btn   = document.getElementById('login-btn');
+  if(!name || !pass){ errEl.textContent = 'Please fill in both fields'; return; }
+  btn.textContent = '⏳'; btn.disabled = true;
+  const res = isSignup ? await authSignup(name,pass) : await authLogin(name,pass);
+  btn.disabled = false; setLoginMode(isSignup);
+  if(!res.ok){ errEl.textContent = res.msg; return; }
+  loginUser(res.name, hashPass(pass));
+}
+
+document.getElementById('login-btn').addEventListener('click', doLogin);
+document.getElementById('login-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+document.getElementById('login-name').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('login-pass').focus(); });
+
+// Logout
+document.getElementById('user-badge').addEventListener('click', ()=>{
+  if(!confirm(`Log out as ${currentUser}?`)) return;
+  LS.clearSession(); currentUser = null;
+  if(gameRunning) endGame(false, true);
+  closeLeaderboard();
+  document.getElementById('login-name').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-err').textContent = '';
+  setLoginMode(false);
+  document.getElementById('login-screen').classList.remove('hidden');
+});
+
+// ══ LEADERBOARD UI ════════════════════════════════════
+function recordSession(data){
+  // save to Firebase global board
+  saveToBoard(data);
+  // save personal session history locally
+  const sess = LS.getSessions(data.name);
+  sess.unshift(data);
+  LS.saveSessions(data.name, sess);
+}
+
+function openLeaderboard(fromGameOver=false){
+  document.getElementById('lb-overlay').classList.remove('hidden');
+  document.getElementById('lb-cont-btn').style.display = fromGameOver ? 'none' : 'block';
+  document.getElementById('lb-content').innerHTML = '<div class="lb-empty" style="animation:none;opacity:.6">⏳ Loading rankings…</div>';
+  renderLB(currentTab);
+}
+function closeLeaderboard(){ document.getElementById('lb-overlay').classList.add('hidden'); }
+
+document.getElementById('lb-close').addEventListener('click', closeLeaderboard);
+document.getElementById('lb-btn').addEventListener('click', ()=>openLeaderboard(false));
+document.getElementById('lb-play-btn').addEventListener('click', ()=>{ closeLeaderboard(); startGame(); });
+document.getElementById('lb-cont-btn').addEventListener('click', closeLeaderboard);
+document.querySelectorAll('.lb-tab').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    document.querySelectorAll('.lb-tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active'); currentTab = t.dataset.tab;
+    renderLB(currentTab);
+  });
+});
+
+function acc(r){ const a=r.attempts||0,c=r.correct||0; return a>0?Math.round(c/a*100):0; }
+function fmtDate(ts){ const d=new Date(ts); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`; }
+
+async function renderLB(tab){
+  const cont = document.getElementById('lb-content');
+
+  if(tab === 'sessions'){
+    const mySess = LS.getSessions(currentUser);
+    if(!mySess.length){ cont.innerHTML=`<div class="lb-empty">No games yet! Play one 🎯</div>`; }
+    else {
+      cont.innerHTML =
+        `<div class="lb-row sess hdr"><span>Date</span><span style="text-align:right">Lvl</span><span style="text-align:right">WPM</span><span style="text-align:right">Acc</span><span style="text-align:right">Score</span></div>`+
+        mySess.map((s,i)=>`<div class="lb-row sess${i===0?' me':''}">
+          <div class="lb-muted" style="text-align:left">${fmtDate(s.date)}</div>
+          <div class="lb-muted">Lv${s.level}</div>
+          <div class="lb-num" style="color:var(--orange)">${s.wpm}</div>
+          <div class="lb-num" style="color:var(--green);font-size:13px">${acc(s)}%</div>
+          <div class="lb-num" style="color:var(--yellow)">${s.score}</div>
+        </div>`).join('');
+    }
+    renderMyStats([]);
+    return;
+  }
+
+  // fetch from Firebase
+  const orderField = tab==='wpm'?'bestWpm': tab==='score'?'bestScore':'correct';
+  let board = await getBoard(orderField, 100);
+
+  // accuracy tab: filter min 3 attempts, re-sort by acc%
+  if(tab==='accuracy'){
+    board = board.filter(r=>(r.attempts||0)>=3).sort((a,b)=>acc(b)-acc(a));
+  }
+
+  if(!board.length){
+    cont.innerHTML=`<div class="lb-empty">No players yet 🫧<br>Be the first on the board!</div>`;
+  } else {
+    const colLabel = tab==='wpm'?'WPM': tab==='score'?'Score':'Acc%';
+    const colColor = tab==='wpm'?'var(--orange)': tab==='score'?'var(--yellow)':'var(--green)';
+    const myRank   = board.findIndex(r=>r.name===currentUser);
+
+    const rows = board.slice(0,50).map((r,i)=>{
+      const isMe  = r.name === currentUser;
+      const medal = i===0?'🥇': i===1?'🥈': i===2?'🥉': `<span style="color:var(--muted);font-size:11px">#${i+1}</span>`;
+      const main  = tab==='wpm'?(r.bestWpm||0): tab==='score'?(r.bestScore||0): acc(r)+'%';
+      const sub1  = tab==='score'?`Lv${r.bestLevel||1}`:(r.totalWords||0);
+      const sub2  = tab==='wpm'? acc(r)+'%': (r.bestWpm||0);
+      return `<div class="lb-row${isMe?' me':''}">
+        <div class="lb-rank">${medal}</div>
+        <div class="lb-name" style="color:${isMe?'var(--cyan)':'var(--text)'}">${r.name}${isMe?' 👤':''}</div>
+        <div class="lb-num" style="color:${colColor}">${main}</div>
+        <div class="lb-muted">${sub1}</div>
+        <div class="lb-num" style="color:var(--muted);font-size:12px">${sub2}</div>
+      </div>`;
+    }).join('');
+
+    // pin current user below if outside top 50
+    const me = board.find(r=>r.name===currentUser);
+    const pinned = myRank>=50&&me?`
+      <div style="text-align:center;padding:4px;font-size:10px;color:var(--muted)">· · · your rank · · ·</div>
+      <div class="lb-row me">
+        <div class="lb-rank"><span style="font-size:10px;color:var(--muted)">#${myRank+1}</span></div>
+        <div class="lb-name" style="color:var(--cyan)">${currentUser} 👤</div>
+        <div class="lb-num" style="color:${colColor}">${tab==='wpm'?(me.bestWpm||0):tab==='score'?(me.bestScore||0):acc(me)+'%'}</div>
+        <div class="lb-muted">${tab==='score'?`Lv${me.bestLevel||1}`:(me.totalWords||0)}</div>
+        <div class="lb-num" style="color:var(--muted);font-size:12px">${tab==='wpm'?acc(me)+'%':(me.bestWpm||0)}</div>
+      </div>`:'';
+
+    cont.innerHTML =
+      `<div class="lb-row hdr"><span>#</span><span>Player</span><span style="text-align:right">${colLabel}</span><span style="text-align:right">${tab==='score'?'Lvl':'Words'}</span><span style="text-align:right">${tab==='wpm'?'Acc':'WPM'}</span></div>`+
+      rows+pinned;
+  }
+  renderMyStats(board);
+}
+
+async function renderMyStats(board){
+  if(!board.length) board = await getBoard('bestWpm',200);
+  const me      = board.find(r=>r.name===currentUser);
+  const wpmRank = [...board].sort((a,b)=>(b.bestWpm||0)-(a.bestWpm||0)).findIndex(r=>r.name===currentUser);
+  document.getElementById('lb-my-stats').innerHTML=`
+    <div class="lb-stat-cell">
+      <div class="lb-stat-val" style="color:var(--cyan);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${currentUser||'—'}</div>
+      <div class="lb-stat-label">You</div>
+    </div>
+    <div class="lb-stat-cell">
+      <div class="lb-stat-val" style="color:var(--orange)">${me?.bestWpm||0}</div>
+      <div class="lb-stat-label">Best WPM</div>
+    </div>
+    <div class="lb-stat-cell">
+      <div class="lb-stat-val">${wpmRank>=0?'#'+(wpmRank+1):'—'}</div>
+      <div class="lb-stat-label">Global Rank</div>
+    </div>
+    <div class="lb-stat-cell">
+      <div class="lb-stat-val" style="color:var(--green)">${acc(me||{})}%</div>
+      <div class="lb-stat-label">Accuracy</div>
+    </div>
+  `;
+}
+
+// ══ GAME CONFIG ════════════════════════════════════════
+const LEVELS=[
+  {dur:180,spawn:3000,speed:0.32},{dur:150,spawn:2500,speed:0.44},
+  {dur:120,spawn:2000,speed:0.58},{dur:100,spawn:1600,speed:0.72},
+  {dur:90,spawn:1300,speed:0.88},
+];
+const getLvl=l=>LEVELS[Math.min(l-1,LEVELS.length-1)];
+
+const WORDS=['apple','brave','cloud','dance','eagle','flame','grace','happy','ionic','jolly','karma','lemon','magic','noodle','ocean','pizza','queen','robin','sunny','tulip','bloom','crisp','enjoy','fizzy','honey','indie','jumpy','kitty','lolly','mango','nifty','olive','poppy','rapid','smile','tasty','whirl','amber','bliss','cozy','dizzy','funky','goofy','hyper','zippy','vivid','quirk','witty','zesty','daffy','boost'];
+
+const THEMES=[
+  {fill:'rgba(0,229,255,0.18)',stroke:'rgba(0,229,255,0.7)',glow:'rgba(0,229,255,0.4)',text:'#00e5ff'},
+  {fill:'rgba(255,110,180,0.18)',stroke:'rgba(255,110,180,0.7)',glow:'rgba(255,110,180,0.4)',text:'#ff6eb4'},
+  {fill:'rgba(255,225,53,0.18)',stroke:'rgba(255,225,53,0.7)',glow:'rgba(255,225,53,0.4)',text:'#ffe135'},
+  {fill:'rgba(77,255,145,0.18)',stroke:'rgba(77,255,145,0.7)',glow:'rgba(77,255,145,0.4)',text:'#4dff91'},
+  {fill:'rgba(255,159,67,0.18)',stroke:'rgba(255,159,67,0.7)',glow:'rgba(255,159,67,0.4)',text:'#ff9f43'},
+  {fill:'rgba(199,125,255,0.18)',stroke:'rgba(199,125,255,0.7)',glow:'rgba(199,125,255,0.4)',text:'#c77dff'},
+];
+const CONFETTI=['#ff6eb4','#00e5ff','#ffe135','#4dff91','#ff9f43','#c77dff','#fff'];
+
+// ══ GAME STATE ══════════════════════════════════════════
+let bubbles=[],score=0,lives=3,cleared=0,level=1;
+let gameRunning=false,animId=null,spawnTimer=null;
+let fallSpeed=0.32,spawnDelay=3000;
+let lvlTimeLeft=180,lvlTotalTime=180,lvlInterval=null;
+let lockedBubble=null;
+const wordTimestamps=[];
+let currentWPM=0,sessionWords=0,correctHits=0,totalAttempts=0;
+
+const flashEl = document.getElementById('flash');
+const canvas  = document.getElementById('canvas');
+const input   = document.getElementById('word-input');
+const CIRC    = 113.1;
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const rndWord=()=>WORDS[Math.floor(Math.random()*WORDS.length)];
+const rndTheme=()=>THEMES[Math.floor(Math.random()*THEMES.length)];
+function scFlash(t){flashEl.className='';void flashEl.offsetWidth;flashEl.className=t}
+
+function updateLives(){
+  const el=document.getElementById('lives-hud');
+  el.textContent=['♥','♥','♥'].map((_,i)=>i<lives?'♥':'♡').join(' ');
+  el.style.color=lives===1?'#ff4757':lives===2?'#ff9f43':'#ff6eb4';
+}
+function updateTimer(){
+  const pct=lvlTimeLeft/lvlTotalTime;
+  document.getElementById('ring-arc').style.strokeDashoffset=CIRC*(1-pct);
+  document.getElementById('timer-center').textContent=`${Math.floor(lvlTimeLeft/60)}:${(lvlTimeLeft%60).toString().padStart(2,'0')}`;
+  const clr=pct>0.5?'#ffe135':pct>0.25?'#ff9f43':'#ff4757';
+  document.getElementById('ring-arc').style.stroke=clr;
+  document.getElementById('timer-center').style.color=clr;
+  document.getElementById('timer-center').className=lvlTimeLeft<=10?'tblink':'';
+}
+function recordWord(){
+  const now=Date.now();
+  wordTimestamps.push(now);
+  while(wordTimestamps.length&&wordTimestamps[0]<now-60000) wordTimestamps.shift();
+  currentWPM=wordTimestamps.length;
+  document.getElementById('wpm-display').textContent=currentWPM;
+  const el=document.createElement('div');el.className='wpm-flash';el.textContent=`${currentWPM} WPM 🔥`;
+  canvas.appendChild(el);setTimeout(()=>el.remove(),1300);
+}
+
+function makeBubbleSVG(r,th){
+  const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+  svg.classList.add('bubble-svg');svg.setAttribute('viewBox',`0 0 ${r*2} ${r*2}`);
+  const defs=document.createElementNS(ns,'defs'),id=`rg${Math.random().toString(36).slice(2)}`;
+  const rg=document.createElementNS(ns,'radialGradient');
+  rg.setAttribute('id',id);rg.setAttribute('cx','35%');rg.setAttribute('cy','30%');rg.setAttribute('r','65%');
+  [[0,'rgba(255,255,255,0.35)'],[60,th.fill],[100,th.fill.replace('0.18','0.06')]].forEach(([o,c])=>{
+    const s=document.createElementNS(ns,'stop');s.setAttribute('offset',o+'%');s.setAttribute('stop-color',c);rg.appendChild(s);
+  });
+  defs.appendChild(rg);svg.appendChild(defs);
+  const c=document.createElementNS(ns,'circle');
+  c.setAttribute('cx',r);c.setAttribute('cy',r);c.setAttribute('r',r-2);
+  c.setAttribute('fill',`url(#${id})`);c.setAttribute('stroke',th.stroke);c.setAttribute('stroke-width','1.8');
+  svg.appendChild(c);
+  const sh=document.createElementNS(ns,'ellipse');
+  sh.setAttribute('cx',r*.62);sh.setAttribute('cy',r*.38);sh.setAttribute('rx',r*.22);sh.setAttribute('ry',r*.13);
+  sh.setAttribute('fill','rgba(255,255,255,0.5)');sh.setAttribute('transform',`rotate(-30,${r*.62},${r*.38})`);
+  svg.appendChild(sh);return svg;
+}
+
+function spawnConfetti(cx,cy,n=20){
+  for(let i=0;i<n;i++){
+    const c=document.createElement('div');c.className='confetti';
+    const clr=CONFETTI[Math.floor(Math.random()*CONFETTI.length)];
+    const a=Math.random()*Math.PI*2,d=rnd(30,90),w=rnd(4,9),h=rnd(4,9);
+    c.style.cssText=`left:${cx}px;top:${cy}px;width:${w}px;height:${h}px;background:${clr};--cx:${Math.cos(a)*d}px;--cy:${Math.sin(a)*d}px;--cr:${rnd(-300,300)}deg;--dur:${rnd(.4,.85)}s`;
+    canvas.appendChild(c);setTimeout(()=>c.remove(),900);
+  }
+}
+function spawnRing(cx,cy,color){
+  const r=document.createElement('div');r.className='pop-ring';
+  r.style.cssText=`left:${cx}px;top:${cy}px;width:40px;height:40px;color:${color}`;
+  canvas.appendChild(r);setTimeout(()=>r.remove(),500);
+}
+function spawnRipple(cx,cy,sz){
+  const r=document.createElement('div');r.className='pop-ripple';
+  r.style.cssText=`left:${cx}px;top:${cy}px;width:${sz}px;height:${sz}px`;
+  canvas.appendChild(r);setTimeout(()=>r.remove(),400);
+}
+function spawnScorePop(cx,cy,pts){
+  const s=document.createElement('div');s.className='score-pop';
+  s.textContent=`+${pts} 🎉`;s.style.cssText=`left:${cx-20}px;top:${cy-20}px`;
+  canvas.appendChild(s);setTimeout(()=>s.remove(),1100);
+}
+function fireDart(fx,fy,tx,ty,color,cb){
+  const dart=document.createElement('div');dart.className='dart';
+  const dx=tx-fx,dy=ty-fy,dist=Math.sqrt(dx*dx+dy*dy),dur=Math.max(0.1,dist/1800);
+  dart.style.cssText=`left:${fx-3}px;top:${fy}px;--dy:${dy}px;--dx:${dx}px;--dur:${dur}s;background:linear-gradient(180deg,${color} 0%,#ff9f43 60%,#ff6eb4 100%);box-shadow:0 0 12px ${color}`;
+  canvas.appendChild(dart);setTimeout(()=>{dart.remove();cb();},dur*1000+30);
+}
+
+function spawnBubble(){
+  if(!gameRunning) return;
+  const word=rndWord(),th=rndTheme(),cw=canvas.offsetWidth;
+  const r=clamp(30+word.length*4,44,70),diam=r*2;
+  const x=clamp(rnd(10,cw-diam-10),8,cw-diam-8);
+  const el=document.createElement('div');el.className='bubble';
+  el.style.cssText=`left:${x}px;top:${-diam}px;width:${diam}px;height:${diam}px;filter:drop-shadow(0 4px 16px ${th.glow})`;
+  el.appendChild(makeBubbleSVG(r,th));
+  const wordEl=document.createElement('div');wordEl.className='bubble-word';
+  const letterEls=[];
+  word.split('').forEach((ch,i)=>{
+    const span=document.createElement('span');span.className='blet';span.textContent=ch;span.style.color=th.text;
+    letterEls.push(span);
+    span.addEventListener('click',e=>{e.stopPropagation();onLetterClick(span,bObj,i);});
+    wordEl.appendChild(span);
+  });
+  el.appendChild(wordEl);canvas.appendChild(el);
+  const bObj={el,word,letterEls,th,y:-diam,r,baseX:x,speed:fallSpeed+rnd(0,.18),wP:Math.random()*Math.PI*2,wA:rnd(6,18),wS:rnd(.012,.025)};
+  bubbles.push(bObj);
+  el.addEventListener('click',()=>{if(!gameRunning)return;lockedBubble=bObj;highlightBubble(bObj,input.value.toLowerCase());});
+  spawnTimer=setTimeout(spawnBubble,Math.max(800,spawnDelay));
+}
+
+function popBubble(bObj,fx,fy){
+  const cr=canvas.getBoundingClientRect(),br=bObj.el.getBoundingClientRect();
+  const cx=br.left-cr.left+br.width/2,cy=br.top-cr.top+br.height/2;
+  fireDart(fx,fy,cx,cy,bObj.th.text,()=>{
+    spawnConfetti(cx,cy,24);spawnRing(cx,cy,bObj.th.text);spawnRipple(cx,cy,bObj.r*2.2);
+    scFlash('happy');
+    const pts=10*level;score+=pts;cleared++;sessionWords++;correctHits++;
+    document.getElementById('score').textContent=score;
+    document.getElementById('cleared').textContent=cleared;
+    spawnScorePop(cx,cy,pts);recordWord();
+    bObj.el.remove();const i=bubbles.indexOf(bObj);if(i>-1)bubbles.splice(i,1);lockedBubble=null;
+  });
+}
+
+function onLetterClick(span,bObj,idx){
+  if(!gameRunning||span.classList.contains('popping')) return;
+  span.classList.add('popping');bObj.letterEls[idx]._popped=true;
+  if(bObj.letterEls.every(l=>l._popped)){
+    const cr=canvas.getBoundingClientRect(),br=bObj.el.getBoundingClientRect();
+    const cx=br.left-cr.left+br.width/2,cy=br.top-cr.top+br.height/2;
+    spawnConfetti(cx,cy,20);spawnRing(cx,cy,bObj.th.text);
+    const pts=10*level;score+=pts;cleared++;sessionWords++;correctHits++;
+    document.getElementById('score').textContent=score;document.getElementById('cleared').textContent=cleared;
+    spawnScorePop(cx,cy,pts);scFlash('happy');recordWord();
+    setTimeout(()=>{if(bObj.el?.parentNode)bObj.el.remove();const i=bubbles.indexOf(bObj);if(i>-1)bubbles.splice(i,1);lockedBubble=null;},280);
+  }
+}
+
+function highlightBubble(b,typed){ b.letterEls.forEach((l,i)=>{if(!l._popped)l.classList.toggle('lit',i<typed.length);}); }
+function clearAllHL(){ bubbles.forEach(b=>b.letterEls.forEach(l=>l.classList.remove('lit'))); }
+function findMatch(typed){
+  if(lockedBubble&&bubbles.includes(lockedBubble)&&lockedBubble.word.startsWith(typed)) return lockedBubble;
+  let best=null,bestY=-1;
+  for(const b of bubbles){if(b.word.startsWith(typed)&&b.y>bestY){best=b;bestY=b.y;}}
+  return best;
+}
+
+input.addEventListener('input',()=>{
+  if(!gameRunning) return;
+  const typed=input.value.toLowerCase();
+  clearAllHL();
+  if(!typed){lockedBubble=null;return;}
+  const target=findMatch(typed);
+  if(!target){
+    lockedBubble=null;input.style.borderColor='var(--danger)';
+    setTimeout(()=>input.style.borderColor='',400);return;
+  }
+  lockedBubble=target;
+  target.el.classList.remove('targeted');void target.el.offsetWidth;target.el.classList.add('targeted');
+  highlightBubble(target,typed);
+});
+
+input.addEventListener('keydown',e=>{
+  if(!gameRunning){if(e.key==='Enter')startGame();return;}
+  if(e.key!=='Enter') return;
+  e.preventDefault();
+  const typed=input.value.trim().toLowerCase();
+  if(!typed) return;
+  totalAttempts++;
+  const target=bubbles.find(b=>b.word===typed)||findMatch(typed);
+  if(!target){
+    input.classList.remove('input-shake');void input.offsetWidth;input.classList.add('input-shake');
+    scFlash('sad');input.value='';lockedBubble=null;clearAllHL();return;
+  }
+  clearAllHL();input.value='';lockedBubble=null;
+  popBubble(target,canvas.offsetWidth/2,canvas.offsetHeight);
+});
+
+function startLevelTimer(){
+  clearInterval(lvlInterval);
+  const cfg=getLvl(level);lvlTimeLeft=cfg.dur;lvlTotalTime=cfg.dur;updateTimer();
+  lvlInterval=setInterval(()=>{
+    if(!gameRunning){clearInterval(lvlInterval);return;}
+    lvlTimeLeft--;updateTimer();
+    if(lvlTimeLeft<=0){clearInterval(lvlInterval);advanceLevel();}
+  },1000);
+}
+
+function advanceLevel(){
+  saveCurrentSession(false);
+  level++;
+  const cfg=getLvl(level);fallSpeed=cfg.speed;spawnDelay=cfg.spawn;
+  document.getElementById('level-val').textContent=level;
+  document.getElementById('level-badge').textContent=`LVL ${level}`;
+  bubbles.forEach(b=>b.speed=clamp(b.speed+0.1,0.3,2));
+  const banner=document.getElementById('lvl-banner');
+  banner.innerHTML=`🎊 LEVEL ${level}! 🎊`;banner.style.display='block';
+  banner.style.animation='none';void banner.offsetWidth;
+  banner.style.animation='lvl-pop 1.8s ease-out forwards';
+  setTimeout(()=>banner.style.display='none',1900);
+  scFlash('lvl');openLeaderboard(false);startLevelTimer();
+}
+
+function tick(){
+  if(!gameRunning) return;
+  const ch=canvas.offsetHeight;
+  for(let i=bubbles.length-1;i>=0;i--){
+    const b=bubbles[i];
+    if(!b.el.parentNode){bubbles.splice(i,1);continue;}
+    b.y+=b.speed;b.wP+=b.wS;
+    b.el.style.top=b.y+'px';
+    b.el.style.left=(b.baseX+Math.sin(b.wP)*b.wA)+'px';
+    if(b.y>=ch-10){
+      const cr=canvas.getBoundingClientRect(),br=b.el.getBoundingClientRect();
+      spawnConfetti(br.left-cr.left+br.width/2,ch-20,10);
+      scFlash('sad');b.el.remove();bubbles.splice(i,1);
+      if(lockedBubble===b)lockedBubble=null;
+      lives--;updateLives();if(lives<=0){endGame(false);return;}
+    }
+  }
+  animId=requestAnimationFrame(tick);
+}
+
+function saveCurrentSession(survived){
+  if(!currentUser) return;
+  recordSession({name:currentUser,wpm:currentWPM,score,words:sessionWords,correct:correctHits,attempts:totalAttempts,level,survived,date:Date.now()});
+}
+
+function startGame(){
+  if(!currentUser) return;
+  closeLeaderboard();
+  bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
+  score=0;lives=3;cleared=0;level=1;lockedBubble=null;
+  sessionWords=0;wordTimestamps.length=0;currentWPM=0;correctHits=0;totalAttempts=0;
+  const cfg=getLvl(1);fallSpeed=cfg.speed;spawnDelay=cfg.spawn;
+  document.getElementById('score').textContent=0;
+  document.getElementById('cleared').textContent=0;
+  document.getElementById('level-val').textContent=1;
+  document.getElementById('level-badge').textContent='LVL 1';
+  document.getElementById('wpm-display').textContent=0;
+  updateLives();
+  document.getElementById('overlay').style.display='none';
+  gameRunning=true;input.value='';input.focus();
+  document.getElementById('start-btn').textContent='RESTART 🔄';
+  cancelAnimationFrame(animId);clearTimeout(spawnTimer);clearInterval(lvlInterval);
+  spawnBubble();animId=requestAnimationFrame(tick);startLevelTimer();
+}
+
+function endGame(survived,silent=false){
+  gameRunning=false;
+  cancelAnimationFrame(animId);clearTimeout(spawnTimer);clearInterval(lvlInterval);
+  bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
+  if(!silent&&currentUser) saveCurrentSession(survived);
+  if(silent) return;
+  const pct=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0;
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`
+    <div class="ov-emoji">${survived?'🏆':'💀'}</div>
+    <div class="ov-title" style="font-size:38px;background:linear-gradient(135deg,${survived?'var(--cyan),var(--green)':'var(--danger),var(--pink)'});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${survived?'SURVIVED!':'GAME OVER'}</div>
+    <div class="ov-score">${score}</div>
+    <div style="display:flex;gap:14px;font-size:13px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center">
+      <span>WPM <b style="color:var(--orange)">${currentWPM}</b></span>
+      <span>Accuracy <b style="color:var(--green)">${pct}%</b></span>
+      <span>Words <b style="color:var(--text)">${sessionWords}</b></span>
+      <span>Level <b style="color:var(--text)">${level}</b></span>
+    </div>
+    <p class="ov-tip">▶ Click START or check the leaderboard!</p>
+  `;
+  ov.style.display='flex';
+  document.getElementById('start-btn').textContent='PLAY AGAIN 🎮';
+  input.value='';
+  setTimeout(()=>openLeaderboard(true),700);
+}
+
+// Deco bubbles
+function spawnDecoBubbles(){
+  const cw=canvas.offsetWidth,ch=canvas.offsetHeight;
+  for(let i=0;i<8;i++){
+    const d=document.createElement('div');d.className='deco-bubble';
+    const sz=rnd(20,60);
+    d.style.cssText=`left:${rnd(5,cw-70)}px;top:${rnd(10,ch-70)}px;width:${sz}px;height:${sz}px;animation-duration:${rnd(4,9)}s;animation-delay:${rnd(0,4)}s`;
+    canvas.appendChild(d);
+  }
+}
+
+document.getElementById('start-btn').addEventListener('click', startGame);
+
+// ── BOOT ──────────────────────────────────────────────
+let currentTab = 'wpm';
+spawnDecoBubbles();
+tryAutoLogin().then(ok=>{
+  if(!ok) document.getElementById('login-screen').classList.remove('hidden');
+});
+
+}); // end DOMContentLoaded
+</script>
+</body>
+</html>
