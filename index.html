@@ -256,495 +256,262 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 </div>
 
 <script type="module">
-import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { initializeApp }      from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getFirestore, doc, getDoc, setDoc, updateDoc,
          collection, getDocs, query, orderBy, limit,
-         serverTimestamp }         from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+         serverTimestamp }    from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-document.addEventListener('DOMContentLoaded', async () => {
-
-// ══════════════════════════════════════════════════════════════
-//  FIREBASE SETUP — paste your config values below
-//  1. console.firebase.google.com → your project
-//  2. Settings ⚙️ → Project settings → Your apps → copy config
-//  3. Firestore Database → Rules → paste open rules → Publish
-// ══════════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════════════
+//  PASTE YOUR FIREBASE CONFIG HERE
+//  Get it from: Firebase Console → Project Settings → Your Apps
+// ══════════════════════════════════════════════════════
 const firebaseConfig = {
-  apiKey: "AIzaSyBosqCCoUrkrl5uxbBXUvgIdzx-x7tNd7M",
-  authDomain: "bubble-game-9d168.firebaseapp.com",
-  projectId: "bubble-game-9d168",
-  storageBucket: "bubble-game-9d168.firebasestorage.app",
-  messagingSenderId: "300400641879",
-  appId: "1:300400641879:web:26ea3f6ff6af2be413e012"z
+  apiKey:            "PASTE_YOUR_apiKey_HERE",
+  authDomain:        "PASTE_YOUR_authDomain_HERE",
+  projectId:         "PASTE_YOUR_projectId_HERE",
+  storageBucket:     "PASTE_YOUR_storageBucket_HERE",
+  messagingSenderId: "PASTE_YOUR_messagingSenderId_HERE",
+  appId:             "PASTE_YOUR_appId_HERE"
 };
 
-// ── Check if Firebase config has been filled in ───────
-const FB_READY = !Object.values(firebaseConfig).some(v => v.startsWith('PASTE_YOUR'));
-
-let fbApp, db;
+const FB_READY = !Object.values(firebaseConfig).some(v=>v.startsWith('PASTE_YOUR'));
+let db = null;
 if(FB_READY){
-  fbApp = initializeApp(firebaseConfig);
-  db    = getFirestore(fbApp);
-} else {
-  // Show setup warning on login screen
-  window.addEventListener('DOMContentLoaded', ()=>{
-    const box = document.querySelector('.login-box');
-    const warn = document.createElement('div');
-    warn.style.cssText = 'width:100%;padding:10px 14px;border-radius:12px;background:rgba(255,71,87,0.15);border:1px solid rgba(255,71,87,0.4);font-size:11px;color:#ff8fa0;font-weight:700;text-align:center;line-height:1.7';
-    warn.innerHTML = '⚠️ Firebase not configured yet!<br>Open this file, find <code style="color:#ff6eb4">firebaseConfig</code><br>and paste your Firebase project values.';
-    box.appendChild(warn);
-  });
+  db = getFirestore(initializeApp(firebaseConfig));
 }
 
-// ── helpers ───────────────────────────────────────────
+// ── localStorage helpers ──────────────────────────────
 function hashPass(s){ let h=5381; for(let i=0;i<s.length;i++) h=((h<<5)+h)^s.charCodeAt(i); return (h>>>0).toString(36); }
-
-// localStorage — login session + personal session history + fallback users/board
 const LS = {
-  saveSession(name, passHash){ localStorage.setItem('bp2_session', JSON.stringify({name, passHash})); },
-  loadSession(){ try{ return JSON.parse(localStorage.getItem('bp2_session')); }catch{ return null; } },
-  clearSession(){ localStorage.removeItem('bp2_session'); },
-  getSessions(name){ try{ return JSON.parse(localStorage.getItem('bp2_sess_'+name.toLowerCase())||'[]'); }catch{ return []; } },
-  saveSessions(name, d){ localStorage.setItem('bp2_sess_'+name.toLowerCase(), JSON.stringify(d.slice(0,30))); },
-  // fallback users & board (used when Firebase not configured)
-  getUsers(){ try{ return JSON.parse(localStorage.getItem('bp2_users')||'{}'); }catch{ return {}; } },
-  saveUsers(u){ localStorage.setItem('bp2_users', JSON.stringify(u)); },
-  getBoard(){ try{ return JSON.parse(localStorage.getItem('bp2_board')||'[]'); }catch{ return []; } },
-  saveBoard(b){ localStorage.setItem('bp2_board', JSON.stringify(b.slice(0,200))); },
+  saveSession(n,h){ localStorage.setItem('bp_sess',JSON.stringify({name:n,passHash:h})); },
+  loadSession(){ try{ return JSON.parse(localStorage.getItem('bp_sess')); }catch{ return null; } },
+  clearSession(){ localStorage.removeItem('bp_sess'); },
+  getUsers(){ try{ return JSON.parse(localStorage.getItem('bp_users')||'{}'); }catch{ return {}; } },
+  saveUsers(u){ localStorage.setItem('bp_users',JSON.stringify(u)); },
+  getBoard(){ try{ return JSON.parse(localStorage.getItem('bp_board')||'[]'); }catch{ return []; } },
+  saveBoard(b){ localStorage.setItem('bp_board',JSON.stringify(b.slice(0,200))); },
+  getSessions(n){ try{ return JSON.parse(localStorage.getItem('bp_s_'+n.toLowerCase())||'[]'); }catch{ return []; } },
+  saveSessions(n,d){ localStorage.setItem('bp_s_'+n.toLowerCase(),JSON.stringify(d.slice(0,30))); },
 };
 
-// ── AUTH ──────────────────────────────────────────────
-async function authLogin(name, pass){
-  const key = name.toLowerCase().trim();
-
-  // Always try localStorage first (instant, offline-safe)
-  const localUsers = LS.getUsers();
-  if(localUsers[key]){
-    if(localUsers[key].passHash !== hashPass(pass)) return {ok:false, msg:'Wrong password 🙈'};
-    return {ok:true, name: localUsers[key].displayName};
-  }
-
-  // If not in localStorage, try Firebase
-  if(!FB_READY) return {ok:false, msg:'User not found — sign up first!'};
-  try {
-    const snap = await getDoc(doc(db,'users',key));
-    if(!snap.exists()) return {ok:false, msg:'User not found — sign up first!'};
-    if(snap.data().passHash !== hashPass(pass)) return {ok:false, msg:'Wrong password 🙈'};
-    // Cache user locally so future logins are instant
-    localUsers[key] = { displayName: snap.data().displayName, passHash: snap.data().passHash };
-    LS.saveUsers(localUsers);
-    return {ok:true, name: snap.data().displayName};
-  } catch(e){
-    console.warn('Firebase login failed, error:', e.code||e.message);
-    return {ok:false, msg:'User not found — sign up first!'};
-  }
-}
-
+// ── Auth ──────────────────────────────────────────────
 async function authSignup(name, pass){
-  const trimmed = name.trim();
-  if(trimmed.length < 2) return {ok:false, msg:'Name must be at least 2 chars'};
-  if(pass.length   < 3)  return {ok:false, msg:'Password must be at least 3 chars'};
-  const key  = trimmed.toLowerCase();
-  const hash = hashPass(pass);
-
-  // Check localStorage first
-  const localUsers = LS.getUsers();
-  if(localUsers[key]) return {ok:false, msg:'Name already taken 😅 try another'};
-
-  // Save locally always (so login works even if Firebase fails)
-  localUsers[key] = { displayName: trimmed, passHash: hash, created: Date.now() };
-  LS.saveUsers(localUsers);
-
-  // Also save to Firebase if configured (for cross-device)
-  if(FB_READY){
-    try {
-      const snap = await getDoc(doc(db,'users',key));
-      if(snap.exists()){
-        // Someone else already has this name on Firebase
-        delete localUsers[key]; LS.saveUsers(localUsers);
-        return {ok:false, msg:'Name already taken 😅 try another'};
-      }
-      await setDoc(doc(db,'users',key),{
-        displayName: trimmed, passHash: hash, createdAt: serverTimestamp()
-      });
-    } catch(e){
-      // Firebase failed — that's ok, local account still works
-      console.warn('Firebase signup failed (local account created):', e.code||e.message);
-    }
-  }
-  return {ok:true, name: trimmed};
+  const t=name.trim();
+  if(t.length<2) return {ok:false,msg:'Name needs at least 2 characters'};
+  if(pass.length<3) return {ok:false,msg:'Password needs at least 3 characters'};
+  const key=t.toLowerCase(), hash=hashPass(pass);
+  const local=LS.getUsers();
+  if(local[key]) return {ok:false,msg:'Name taken — try another 😅'};
+  // save locally first (always works)
+  local[key]={displayName:t,passHash:hash};
+  LS.saveUsers(local);
+  // try Firebase too (best effort)
+  if(FB_READY){ try{ const s=await getDoc(doc(db,'users',key)); if(s.exists()){ delete local[key]; LS.saveUsers(local); return {ok:false,msg:'Name taken on server — try another 😅'}; } await setDoc(doc(db,'users',key),{displayName:t,passHash:hash,createdAt:serverTimestamp()}); }catch(e){ console.warn('FB signup fail',e.message); } }
+  return {ok:true,name:t};
 }
 
-// auto-login from saved session
-async function tryAutoLogin(){
-  const saved = LS.loadSession();
-  if(!saved?.name) return false;
-  // Verify against local users (fast, always works)
-  const users = LS.getUsers();
-  const key   = saved.name.toLowerCase();
-  if(users[key] && users[key].passHash === saved.passHash){
-    loginUser(saved.name, saved.passHash); return true;
-  }
-  LS.clearSession(); return false;
+async function authLogin(name, pass){
+  const key=name.trim().toLowerCase(), hash=hashPass(pass);
+  const local=LS.getUsers();
+  if(local[key]){ return local[key].passHash===hash ? {ok:true,name:local[key].displayName} : {ok:false,msg:'Wrong password 🙈'}; }
+  if(!FB_READY) return {ok:false,msg:'User not found — sign up first!'};
+  try{
+    const s=await getDoc(doc(db,'users',key));
+    if(!s.exists()) return {ok:false,msg:'User not found — sign up first!'};
+    if(s.data().passHash!==hash) return {ok:false,msg:'Wrong password 🙈'};
+    // cache locally
+    local[key]={displayName:s.data().displayName,passHash:hash};
+    LS.saveUsers(local);
+    return {ok:true,name:s.data().displayName};
+  }catch(e){ return {ok:false,msg:'Connection error — try again'}; }
 }
 
-function loginUser(name, passHash){
-  currentUser = name;
-  LS.saveSession(name, passHash);
-  document.getElementById('ub-name').textContent = name;
-  document.getElementById('login-screen').classList.add('hidden');
-}
-
-// ── LEADERBOARD ───────────────────────────────────────
-async function getBoard(orderField='bestWpm', lim=100){
+// ── Board ─────────────────────────────────────────────
+async function getBoard(field='bestWpm',lim=100){
   if(!FB_READY){
-    // Fallback: localStorage board
-    let board = LS.getBoard();
-    if(orderField==='bestWpm')   board.sort((a,b)=>(b.bestWpm||0)-(a.bestWpm||0));
-    else if(orderField==='bestScore') board.sort((a,b)=>(b.bestScore||0)-(a.bestScore||0));
-    else board.sort((a,b)=>(b.correct||0)-(a.correct||0));
-    return board.slice(0,lim);
+    let b=LS.getBoard();
+    b.sort((a,z)=>(z[field]||0)-(a[field]||0));
+    return b.slice(0,lim);
   }
-  try {
-    const q    = query(collection(db,'leaderboard'), orderBy(orderField,'desc'), limit(lim));
-    const snap = await getDocs(q);
-    return snap.docs.map(d=>({...d.data()}));
-  } catch(e){ console.error(e); return []; }
+  try{ const q=query(collection(db,'leaderboard'),orderBy(field,'desc'),limit(lim)); const s=await getDocs(q); return s.docs.map(d=>d.data()); }catch(e){ return []; }
 }
 
 async function saveToBoard(data){
   if(!FB_READY){
-    // Fallback: localStorage board
-    const board = LS.getBoard();
-    const idx   = board.findIndex(r=>r.name===data.name);
-    if(idx===-1){
-      board.push({name:data.name,bestWpm:data.wpm,bestScore:data.score,
-        totalWords:data.words,correct:data.correct,attempts:data.attempts,
-        bestLevel:data.level,lastPlayed:data.date});
-    } else {
-      const r=board[idx];
-      if(data.wpm   > (r.bestWpm||0))   r.bestWpm   = data.wpm;
-      if(data.score > (r.bestScore||0)){ r.bestScore = data.score; r.bestLevel = data.level; }
-      r.totalWords=(r.totalWords||0)+data.words;
-      r.correct   =(r.correct||0)   +data.correct;
-      r.attempts  =(r.attempts||0)  +data.attempts;
-      r.lastPlayed=data.date;
-    }
-    LS.saveBoard(board);
-    return;
+    const b=LS.getBoard(), i=b.findIndex(r=>r.name===data.name);
+    if(i===-1){ b.push({name:data.name,bestWpm:data.wpm,bestScore:data.score,totalWords:data.words,correct:data.correct,attempts:data.attempts,bestLevel:data.level}); }
+    else{ const r=b[i]; if(data.wpm>r.bestWpm)r.bestWpm=data.wpm; if(data.score>r.bestScore){r.bestScore=data.score;r.bestLevel=data.level;} r.totalWords=(r.totalWords||0)+data.words; r.correct=(r.correct||0)+data.correct; r.attempts=(r.attempts||0)+data.attempts; }
+    LS.saveBoard(b); return;
   }
-  const key = data.name.toLowerCase();
-  try {
-    const snap = await getDoc(doc(db,'leaderboard',key));
-    if(!snap.exists()){
-      await setDoc(doc(db,'leaderboard',key),{
-        name:data.name, bestWpm:data.wpm, bestScore:data.score,
-        totalWords:data.words, correct:data.correct, attempts:data.attempts,
-        bestLevel:data.level, lastPlayed:serverTimestamp()
-      });
-    } else {
-      const cur = snap.data();
-      await updateDoc(doc(db,'leaderboard',key),{
-        bestWpm:   Math.max(cur.bestWpm||0,   data.wpm),
-        bestScore: Math.max(cur.bestScore||0, data.score),
-        totalWords:(cur.totalWords||0)+data.words,
-        correct:   (cur.correct||0)   +data.correct,
-        attempts:  (cur.attempts||0)  +data.attempts,
-        bestLevel: Math.max(cur.bestLevel||1, data.level),
-        lastPlayed:serverTimestamp()
-      });
-    }
-  } catch(e){ console.error('saveToBoard error',e); }
+  const key=data.name.toLowerCase();
+  try{
+    const s=await getDoc(doc(db,'leaderboard',key));
+    if(!s.exists()){ await setDoc(doc(db,'leaderboard',key),{name:data.name,bestWpm:data.wpm,bestScore:data.score,totalWords:data.words,correct:data.correct,attempts:data.attempts,bestLevel:data.level,lastPlayed:serverTimestamp()}); }
+    else{ const c=s.data(); await updateDoc(doc(db,'leaderboard',key),{bestWpm:Math.max(c.bestWpm||0,data.wpm),bestScore:Math.max(c.bestScore||0,data.score),totalWords:(c.totalWords||0)+data.words,correct:(c.correct||0)+data.correct,attempts:(c.attempts||0)+data.attempts,bestLevel:Math.max(c.bestLevel||1,data.level),lastPlayed:serverTimestamp()}); }
+  }catch(e){ console.warn('saveBoard fail',e.message); }
 }
 
-// ── LOGIN UI ──────────────────────────────────────────
-let currentUser = null;
-let isSignup = false;
+// ══ MAIN INIT — runs after DOM ready ══════════════════
+async function init(){
 
+let currentUser=null, isSignup=false, currentTab='wpm', gameRunning=false;
+let bubbles=[],score=0,lives=3,cleared=0,level=1;
+let animId=null,spawnTimer=null,fallSpeed=0.32,spawnDelay=3000;
+let lvlTimeLeft=180,lvlTotalTime=180,lvlInterval=null,lockedBubble=null;
+const wordTimestamps=[];
+let currentWPM=0,sessionWords=0,correctHits=0,totalAttempts=0;
+
+const $=id=>document.getElementById(id);
+const flashEl=$('flash'), canvas=$('canvas'), input=$('word-input');
+const CIRC=113.1;
+
+// ── Login UI ──────────────────────────────────────────
 function setLoginMode(su){
-  isSignup = su;
-  document.getElementById('login-mode-label').textContent = su ? 'CREATE ACCOUNT' : 'SIGN IN TO PLAY';
-  document.getElementById('login-btn').textContent        = su ? "LET'S GO! 🚀"   : "LET'S PLAY! 🎮";
-  document.getElementById('login-toggle-text').textContent= su ? 'Have an account?' : 'No account?';
-  document.getElementById('login-switch').textContent     = su ? 'Sign in' : 'Sign up';
-  document.getElementById('login-err').textContent = '';
+  isSignup=su;
+  $('login-mode-label').textContent=su?'CREATE ACCOUNT':'SIGN IN TO PLAY';
+  $('login-btn').textContent=su?"LET'S GO! 🚀":"LET'S PLAY! 🎮";
+  $('login-toggle-text').textContent=su?'Have an account?':'No account?';
+  $('login-switch').textContent=su?'Sign in':'Sign up';
+  $('login-err').textContent='';
 }
-
-document.getElementById('login-switch').addEventListener('click', ()=>setLoginMode(!isSignup));
+$('login-switch').addEventListener('click',()=>setLoginMode(!isSignup));
 
 async function doLogin(){
-  const name  = document.getElementById('login-name').value.trim();
-  const pass  = document.getElementById('login-pass').value;
-  const errEl = document.getElementById('login-err');
-  const btn   = document.getElementById('login-btn');
-  if(!name || !pass){ errEl.textContent = 'Please fill in both fields'; return; }
-  btn.textContent = '⏳'; btn.disabled = true;
-  const res = isSignup ? await authSignup(name,pass) : await authLogin(name,pass);
-  btn.disabled = false; setLoginMode(isSignup);
-  if(!res.ok){ errEl.textContent = res.msg; return; }
-  loginUser(res.name, hashPass(pass));
+  const name=$('login-name').value.trim();
+  const pass=$('login-pass').value;
+  const errEl=$('login-err'), btn=$('login-btn');
+  if(!name||!pass){ errEl.textContent='Please fill in both fields'; return; }
+  btn.textContent='⏳'; btn.disabled=true;
+  const res=isSignup?await authSignup(name,pass):await authLogin(name,pass);
+  btn.disabled=false; setLoginMode(isSignup);
+  if(!res.ok){ errEl.textContent=res.msg; return; }
+  doLoginUser(res.name,hashPass(pass));
 }
 
-document.getElementById('login-btn').addEventListener('click', doLogin);
-document.getElementById('login-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
-document.getElementById('login-name').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('login-pass').focus(); });
+function doLoginUser(name,passHash){
+  currentUser=name;
+  LS.saveSession(name,passHash);
+  $('ub-name').textContent=name;
+  $('login-screen').classList.add('hidden');
+}
 
-// Logout
-document.getElementById('user-badge').addEventListener('click', ()=>{
+$('login-btn').addEventListener('click',doLogin);
+$('login-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+$('login-name').addEventListener('keydown',e=>{ if(e.key==='Enter') $('login-pass').focus(); });
+$('user-badge').addEventListener('click',()=>{
   if(!confirm(`Log out as ${currentUser}?`)) return;
-  LS.clearSession(); currentUser = null;
-  if(gameRunning) endGame(false, true);
+  LS.clearSession(); currentUser=null;
+  if(gameRunning) endGame(false,true);
   closeLeaderboard();
-  document.getElementById('login-name').value = '';
-  document.getElementById('login-pass').value = '';
-  document.getElementById('login-err').textContent = '';
-  setLoginMode(false);
-  document.getElementById('login-screen').classList.remove('hidden');
+  $('login-name').value=''; $('login-pass').value=''; $('login-err').textContent='';
+  setLoginMode(false); $('login-screen').classList.remove('hidden');
 });
 
-// ══ LEADERBOARD UI ════════════════════════════════════
-function recordSession(data){
-  // save to Firebase global board
-  saveToBoard(data);
-  // save personal session history locally
-  const sess = LS.getSessions(data.name);
-  sess.unshift(data);
-  LS.saveSessions(data.name, sess);
-}
+// auto-login
+const saved=LS.loadSession();
+if(saved?.name){
+  const u=LS.getUsers(); const k=saved.name.toLowerCase();
+  if(u[k]&&u[k].passHash===saved.passHash){ doLoginUser(saved.name,saved.passHash); }
+  else{ LS.clearSession(); $('login-screen').classList.remove('hidden'); }
+} else { $('login-screen').classList.remove('hidden'); }
 
-function openLeaderboard(fromGameOver=false){
-  document.getElementById('lb-overlay').classList.remove('hidden');
-  document.getElementById('lb-cont-btn').style.display = fromGameOver ? 'none' : 'block';
-  document.getElementById('lb-content').innerHTML = '<div class="lb-empty" style="animation:none;opacity:.6">⏳ Loading rankings…</div>';
-  renderLB(currentTab);
-}
-function closeLeaderboard(){ document.getElementById('lb-overlay').classList.add('hidden'); }
-
-document.getElementById('lb-close').addEventListener('click', closeLeaderboard);
-document.getElementById('lb-btn').addEventListener('click', ()=>openLeaderboard(false));
-document.getElementById('lb-play-btn').addEventListener('click', ()=>{ closeLeaderboard(); startGame(); });
-document.getElementById('lb-cont-btn').addEventListener('click', closeLeaderboard);
-document.querySelectorAll('.lb-tab').forEach(t=>{
-  t.addEventListener('click', ()=>{
-    document.querySelectorAll('.lb-tab').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active'); currentTab = t.dataset.tab;
-    renderLB(currentTab);
-  });
-});
+// ── Leaderboard UI ─────────────────────────────────────
+function recordSession(data){ saveToBoard(data); const s=LS.getSessions(data.name); s.unshift(data); LS.saveSessions(data.name,s); }
+function openLeaderboard(fromGameOver=false){ $('lb-overlay').classList.remove('hidden'); $('lb-cont-btn').style.display=fromGameOver?'none':'block'; $('lb-content').innerHTML='<div class="lb-empty">⏳ Loading…</div>'; renderLB(currentTab); }
+function closeLeaderboard(){ $('lb-overlay').classList.add('hidden'); }
+$('lb-close').addEventListener('click',closeLeaderboard);
+$('lb-btn').addEventListener('click',()=>openLeaderboard(false));
+$('lb-play-btn').addEventListener('click',()=>{ closeLeaderboard(); startGame(); });
+$('lb-cont-btn').addEventListener('click',closeLeaderboard);
+document.querySelectorAll('.lb-tab').forEach(t=>{ t.addEventListener('click',()=>{ document.querySelectorAll('.lb-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); currentTab=t.dataset.tab; renderLB(currentTab); }); });
 
 function acc(r){ const a=r.attempts||0,c=r.correct||0; return a>0?Math.round(c/a*100):0; }
 function fmtDate(ts){ const d=new Date(ts); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`; }
 
 async function renderLB(tab){
-  const cont = document.getElementById('lb-content');
-
-  if(tab === 'sessions'){
-    const mySess = LS.getSessions(currentUser);
-    if(!mySess.length){ cont.innerHTML=`<div class="lb-empty">No games yet! Play one 🎯</div>`; }
-    else {
-      cont.innerHTML =
-        `<div class="lb-row sess hdr"><span>Date</span><span style="text-align:right">Lvl</span><span style="text-align:right">WPM</span><span style="text-align:right">Acc</span><span style="text-align:right">Score</span></div>`+
-        mySess.map((s,i)=>`<div class="lb-row sess${i===0?' me':''}">
-          <div class="lb-muted" style="text-align:left">${fmtDate(s.date)}</div>
-          <div class="lb-muted">Lv${s.level}</div>
-          <div class="lb-num" style="color:var(--orange)">${s.wpm}</div>
-          <div class="lb-num" style="color:var(--green);font-size:13px">${acc(s)}%</div>
-          <div class="lb-num" style="color:var(--yellow)">${s.score}</div>
-        </div>`).join('');
-    }
-    renderMyStats([]);
-    return;
+  const cont=$('lb-content');
+  if(tab==='sessions'){
+    const s=LS.getSessions(currentUser);
+    cont.innerHTML=!s.length?'<div class="lb-empty">No games yet! Play one 🎯</div>':
+      `<div class="lb-row sess hdr"><span>Date</span><span style="text-align:right">Lvl</span><span style="text-align:right">WPM</span><span style="text-align:right">Acc</span><span style="text-align:right">Score</span></div>`+
+      s.map((x,i)=>`<div class="lb-row sess${i===0?' me':''}"><div class="lb-muted" style="text-align:left">${fmtDate(x.date)}</div><div class="lb-muted">Lv${x.level}</div><div class="lb-num" style="color:var(--orange)">${x.wpm}</div><div class="lb-num" style="color:var(--green);font-size:13px">${acc(x)}%</div><div class="lb-num" style="color:var(--yellow)">${x.score}</div></div>`).join('');
+    renderMyStats([]); return;
   }
-
-  // fetch from Firebase
-  const orderField = tab==='wpm'?'bestWpm': tab==='score'?'bestScore':'correct';
-  let board = await getBoard(orderField, 100);
-
-  // accuracy tab: filter min 3 attempts, re-sort by acc%
-  if(tab==='accuracy'){
-    board = board.filter(r=>(r.attempts||0)>=3).sort((a,b)=>acc(b)-acc(a));
-  }
-
-  if(!board.length){
-    cont.innerHTML=`<div class="lb-empty">No players yet 🫧<br>Be the first on the board!</div>`;
-  } else {
-    const colLabel = tab==='wpm'?'WPM': tab==='score'?'Score':'Acc%';
-    const colColor = tab==='wpm'?'var(--orange)': tab==='score'?'var(--yellow)':'var(--green)';
-    const myRank   = board.findIndex(r=>r.name===currentUser);
-
-    const rows = board.slice(0,50).map((r,i)=>{
-      const isMe  = r.name === currentUser;
-      const medal = i===0?'🥇': i===1?'🥈': i===2?'🥉': `<span style="color:var(--muted);font-size:11px">#${i+1}</span>`;
-      const main  = tab==='wpm'?(r.bestWpm||0): tab==='score'?(r.bestScore||0): acc(r)+'%';
-      const sub1  = tab==='score'?`Lv${r.bestLevel||1}`:(r.totalWords||0);
-      const sub2  = tab==='wpm'? acc(r)+'%': (r.bestWpm||0);
-      return `<div class="lb-row${isMe?' me':''}">
-        <div class="lb-rank">${medal}</div>
-        <div class="lb-name" style="color:${isMe?'var(--cyan)':'var(--text)'}">${r.name}${isMe?' 👤':''}</div>
-        <div class="lb-num" style="color:${colColor}">${main}</div>
-        <div class="lb-muted">${sub1}</div>
-        <div class="lb-num" style="color:var(--muted);font-size:12px">${sub2}</div>
-      </div>`;
+  const field=tab==='wpm'?'bestWpm':tab==='score'?'bestScore':'correct';
+  let board=await getBoard(field,100);
+  if(tab==='accuracy') board=board.filter(r=>(r.attempts||0)>=3).sort((a,b)=>acc(b)-acc(a));
+  if(!board.length){ cont.innerHTML='<div class="lb-empty">No players yet 🫧<br>Be the first!</div>'; }
+  else{
+    const colLabel=tab==='wpm'?'WPM':tab==='score'?'Score':'Acc%';
+    const colColor=tab==='wpm'?'var(--orange)':tab==='score'?'var(--yellow)':'var(--green)';
+    const myRank=board.findIndex(r=>r.name===currentUser);
+    const rows=board.slice(0,50).map((r,i)=>{
+      const isMe=r.name===currentUser;
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`<span style="color:var(--muted);font-size:11px">#${i+1}</span>`;
+      const main=tab==='wpm'?(r.bestWpm||0):tab==='score'?(r.bestScore||0):acc(r)+'%';
+      return `<div class="lb-row${isMe?' me':''}"><div class="lb-rank">${medal}</div><div class="lb-name" style="color:${isMe?'var(--cyan)':'var(--text)'}">${r.name}${isMe?' 👤':''}</div><div class="lb-num" style="color:${colColor}">${main}</div><div class="lb-muted">${tab==='score'?`Lv${r.bestLevel||1}`:(r.totalWords||0)}</div><div class="lb-num" style="color:var(--muted);font-size:12px">${tab==='wpm'?acc(r)+'%':(r.bestWpm||0)}</div></div>`;
     }).join('');
-
-    // pin current user below if outside top 50
-    const me = board.find(r=>r.name===currentUser);
-    const pinned = myRank>=50&&me?`
-      <div style="text-align:center;padding:4px;font-size:10px;color:var(--muted)">· · · your rank · · ·</div>
-      <div class="lb-row me">
-        <div class="lb-rank"><span style="font-size:10px;color:var(--muted)">#${myRank+1}</span></div>
-        <div class="lb-name" style="color:var(--cyan)">${currentUser} 👤</div>
-        <div class="lb-num" style="color:${colColor}">${tab==='wpm'?(me.bestWpm||0):tab==='score'?(me.bestScore||0):acc(me)+'%'}</div>
-        <div class="lb-muted">${tab==='score'?`Lv${me.bestLevel||1}`:(me.totalWords||0)}</div>
-        <div class="lb-num" style="color:var(--muted);font-size:12px">${tab==='wpm'?acc(me)+'%':(me.bestWpm||0)}</div>
-      </div>`:'';
-
-    cont.innerHTML =
-      `<div class="lb-row hdr"><span>#</span><span>Player</span><span style="text-align:right">${colLabel}</span><span style="text-align:right">${tab==='score'?'Lvl':'Words'}</span><span style="text-align:right">${tab==='wpm'?'Acc':'WPM'}</span></div>`+
-      rows+pinned;
+    const me=board.find(r=>r.name===currentUser);
+    const pinned=myRank>=50&&me?`<div style="text-align:center;padding:4px;font-size:10px;color:var(--muted)">· · · your rank · · ·</div><div class="lb-row me"><div class="lb-rank"><span style="font-size:10px">#${myRank+1}</span></div><div class="lb-name" style="color:var(--cyan)">${currentUser} 👤</div><div class="lb-num" style="color:${colColor}">${tab==='wpm'?(me.bestWpm||0):tab==='score'?(me.bestScore||0):acc(me)+'%'}</div><div class="lb-muted">${tab==='score'?`Lv${me.bestLevel||1}`:(me.totalWords||0)}</div><div class="lb-num" style="color:var(--muted);font-size:12px">${tab==='wpm'?acc(me)+'%':(me.bestWpm||0)}</div></div>`:'';
+    cont.innerHTML=`<div class="lb-row hdr"><span>#</span><span>Player</span><span style="text-align:right">${colLabel}</span><span style="text-align:right">${tab==='score'?'Lvl':'Words'}</span><span style="text-align:right">${tab==='wpm'?'Acc':'WPM'}</span></div>`+rows+pinned;
   }
   renderMyStats(board);
 }
 
 async function renderMyStats(board){
-  if(!board.length) board = await getBoard('bestWpm',200);
-  const me      = board.find(r=>r.name===currentUser);
-  const wpmRank = [...board].sort((a,b)=>(b.bestWpm||0)-(a.bestWpm||0)).findIndex(r=>r.name===currentUser);
-  document.getElementById('lb-my-stats').innerHTML=`
-    <div class="lb-stat-cell">
-      <div class="lb-stat-val" style="color:var(--cyan);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${currentUser||'—'}</div>
-      <div class="lb-stat-label">You</div>
-    </div>
-    <div class="lb-stat-cell">
-      <div class="lb-stat-val" style="color:var(--orange)">${me?.bestWpm||0}</div>
-      <div class="lb-stat-label">Best WPM</div>
-    </div>
-    <div class="lb-stat-cell">
-      <div class="lb-stat-val">${wpmRank>=0?'#'+(wpmRank+1):'—'}</div>
-      <div class="lb-stat-label">Global Rank</div>
-    </div>
-    <div class="lb-stat-cell">
-      <div class="lb-stat-val" style="color:var(--green)">${acc(me||{})}%</div>
-      <div class="lb-stat-label">Accuracy</div>
-    </div>
-  `;
+  if(!board.length) board=await getBoard('bestWpm',200);
+  const me=board.find(r=>r.name===currentUser);
+  const rank=[...board].sort((a,b)=>(b.bestWpm||0)-(a.bestWpm||0)).findIndex(r=>r.name===currentUser);
+  $('lb-my-stats').innerHTML=`<div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--cyan);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${currentUser||'—'}</div><div class="lb-stat-label">You</div></div><div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--orange)">${me?.bestWpm||0}</div><div class="lb-stat-label">Best WPM</div></div><div class="lb-stat-cell"><div class="lb-stat-val">${rank>=0?'#'+(rank+1):'—'}</div><div class="lb-stat-label">Global Rank</div></div><div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--green)">${acc(me||{})}%</div><div class="lb-stat-label">Accuracy</div></div>`;
 }
 
-// ══ GAME CONFIG ════════════════════════════════════════
-const LEVELS=[
-  {dur:180,spawn:3000,speed:0.32},{dur:150,spawn:2500,speed:0.44},
-  {dur:120,spawn:2000,speed:0.58},{dur:100,spawn:1600,speed:0.72},
-  {dur:90,spawn:1300,speed:0.88},
-];
+// ── Game constants ────────────────────────────────────
+const LEVELS=[{dur:180,spawn:3000,speed:0.32},{dur:150,spawn:2500,speed:0.44},{dur:120,spawn:2000,speed:0.58},{dur:100,spawn:1600,speed:0.72},{dur:90,spawn:1300,speed:0.88}];
 const getLvl=l=>LEVELS[Math.min(l-1,LEVELS.length-1)];
-
 const WORDS=['apple','brave','cloud','dance','eagle','flame','grace','happy','ionic','jolly','karma','lemon','magic','noodle','ocean','pizza','queen','robin','sunny','tulip','bloom','crisp','enjoy','fizzy','honey','indie','jumpy','kitty','lolly','mango','nifty','olive','poppy','rapid','smile','tasty','whirl','amber','bliss','cozy','dizzy','funky','goofy','hyper','zippy','vivid','quirk','witty','zesty','daffy','boost'];
-
-const THEMES=[
-  {fill:'rgba(0,229,255,0.18)',stroke:'rgba(0,229,255,0.7)',glow:'rgba(0,229,255,0.4)',text:'#00e5ff'},
-  {fill:'rgba(255,110,180,0.18)',stroke:'rgba(255,110,180,0.7)',glow:'rgba(255,110,180,0.4)',text:'#ff6eb4'},
-  {fill:'rgba(255,225,53,0.18)',stroke:'rgba(255,225,53,0.7)',glow:'rgba(255,225,53,0.4)',text:'#ffe135'},
-  {fill:'rgba(77,255,145,0.18)',stroke:'rgba(77,255,145,0.7)',glow:'rgba(77,255,145,0.4)',text:'#4dff91'},
-  {fill:'rgba(255,159,67,0.18)',stroke:'rgba(255,159,67,0.7)',glow:'rgba(255,159,67,0.4)',text:'#ff9f43'},
-  {fill:'rgba(199,125,255,0.18)',stroke:'rgba(199,125,255,0.7)',glow:'rgba(199,125,255,0.4)',text:'#c77dff'},
-];
+const THEMES=[{fill:'rgba(0,229,255,0.18)',stroke:'rgba(0,229,255,0.7)',glow:'rgba(0,229,255,0.4)',text:'#00e5ff'},{fill:'rgba(255,110,180,0.18)',stroke:'rgba(255,110,180,0.7)',glow:'rgba(255,110,180,0.4)',text:'#ff6eb4'},{fill:'rgba(255,225,53,0.18)',stroke:'rgba(255,225,53,0.7)',glow:'rgba(255,225,53,0.4)',text:'#ffe135'},{fill:'rgba(77,255,145,0.18)',stroke:'rgba(77,255,145,0.7)',glow:'rgba(77,255,145,0.4)',text:'#4dff91'},{fill:'rgba(255,159,67,0.18)',stroke:'rgba(255,159,67,0.7)',glow:'rgba(255,159,67,0.4)',text:'#ff9f43'},{fill:'rgba(199,125,255,0.18)',stroke:'rgba(199,125,255,0.7)',glow:'rgba(199,125,255,0.4)',text:'#c77dff'}];
 const CONFETTI=['#ff6eb4','#00e5ff','#ffe135','#4dff91','#ff9f43','#c77dff','#fff'];
-
-// ══ GAME STATE ══════════════════════════════════════════
-let bubbles=[],score=0,lives=3,cleared=0,level=1;
-let gameRunning=false,animId=null,spawnTimer=null;
-let fallSpeed=0.32,spawnDelay=3000;
-let lvlTimeLeft=180,lvlTotalTime=180,lvlInterval=null;
-let lockedBubble=null;
-const wordTimestamps=[];
-let currentWPM=0,sessionWords=0,correctHits=0,totalAttempts=0;
-
-const flashEl = document.getElementById('flash');
-const canvas  = document.getElementById('canvas');
-const input   = document.getElementById('word-input');
-const CIRC    = 113.1;
-
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const rnd=(a,b)=>a+Math.random()*(b-a);
 const rndWord=()=>WORDS[Math.floor(Math.random()*WORDS.length)];
 const rndTheme=()=>THEMES[Math.floor(Math.random()*THEMES.length)];
 function scFlash(t){flashEl.className='';void flashEl.offsetWidth;flashEl.className=t}
 
-function updateLives(){
-  const el=document.getElementById('lives-hud');
-  el.textContent=['♥','♥','♥'].map((_,i)=>i<lives?'♥':'♡').join(' ');
-  el.style.color=lives===1?'#ff4757':lives===2?'#ff9f43':'#ff6eb4';
-}
+function updateLives(){ const el=$('lives-hud'); el.textContent=['♥','♥','♥'].map((_,i)=>i<lives?'♥':'♡').join(' '); el.style.color=lives===1?'#ff4757':lives===2?'#ff9f43':'#ff6eb4'; }
 function updateTimer(){
-  const pct=lvlTimeLeft/lvlTotalTime;
-  document.getElementById('ring-arc').style.strokeDashoffset=CIRC*(1-pct);
-  document.getElementById('timer-center').textContent=`${Math.floor(lvlTimeLeft/60)}:${(lvlTimeLeft%60).toString().padStart(2,'0')}`;
-  const clr=pct>0.5?'#ffe135':pct>0.25?'#ff9f43':'#ff4757';
-  document.getElementById('ring-arc').style.stroke=clr;
-  document.getElementById('timer-center').style.color=clr;
-  document.getElementById('timer-center').className=lvlTimeLeft<=10?'tblink':'';
+  const p=lvlTimeLeft/lvlTotalTime;
+  $('ring-arc').style.strokeDashoffset=CIRC*(1-p);
+  $('timer-center').textContent=`${Math.floor(lvlTimeLeft/60)}:${(lvlTimeLeft%60).toString().padStart(2,'0')}`;
+  const c=p>0.5?'#ffe135':p>0.25?'#ff9f43':'#ff4757';
+  $('ring-arc').style.stroke=c; $('timer-center').style.color=c;
+  $('timer-center').className=lvlTimeLeft<=10?'tblink':'';
 }
 function recordWord(){
-  const now=Date.now();
-  wordTimestamps.push(now);
+  const now=Date.now(); wordTimestamps.push(now);
   while(wordTimestamps.length&&wordTimestamps[0]<now-60000) wordTimestamps.shift();
-  currentWPM=wordTimestamps.length;
-  document.getElementById('wpm-display').textContent=currentWPM;
-  const el=document.createElement('div');el.className='wpm-flash';el.textContent=`${currentWPM} WPM 🔥`;
-  canvas.appendChild(el);setTimeout(()=>el.remove(),1300);
+  currentWPM=wordTimestamps.length; $('wpm-display').textContent=currentWPM;
+  const el=document.createElement('div'); el.className='wpm-flash'; el.textContent=`${currentWPM} WPM 🔥`;
+  canvas.appendChild(el); setTimeout(()=>el.remove(),1300);
 }
 
 function makeBubbleSVG(r,th){
   const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
-  svg.classList.add('bubble-svg');svg.setAttribute('viewBox',`0 0 ${r*2} ${r*2}`);
+  svg.classList.add('bubble-svg'); svg.setAttribute('viewBox',`0 0 ${r*2} ${r*2}`);
   const defs=document.createElementNS(ns,'defs'),id=`rg${Math.random().toString(36).slice(2)}`;
   const rg=document.createElementNS(ns,'radialGradient');
   rg.setAttribute('id',id);rg.setAttribute('cx','35%');rg.setAttribute('cy','30%');rg.setAttribute('r','65%');
-  [[0,'rgba(255,255,255,0.35)'],[60,th.fill],[100,th.fill.replace('0.18','0.06')]].forEach(([o,c])=>{
-    const s=document.createElementNS(ns,'stop');s.setAttribute('offset',o+'%');s.setAttribute('stop-color',c);rg.appendChild(s);
-  });
+  [[0,'rgba(255,255,255,0.35)'],[60,th.fill],[100,th.fill.replace('0.18','0.06')]].forEach(([o,c])=>{ const s=document.createElementNS(ns,'stop');s.setAttribute('offset',o+'%');s.setAttribute('stop-color',c);rg.appendChild(s); });
   defs.appendChild(rg);svg.appendChild(defs);
-  const c=document.createElementNS(ns,'circle');
-  c.setAttribute('cx',r);c.setAttribute('cy',r);c.setAttribute('r',r-2);
-  c.setAttribute('fill',`url(#${id})`);c.setAttribute('stroke',th.stroke);c.setAttribute('stroke-width','1.8');
-  svg.appendChild(c);
-  const sh=document.createElementNS(ns,'ellipse');
-  sh.setAttribute('cx',r*.62);sh.setAttribute('cy',r*.38);sh.setAttribute('rx',r*.22);sh.setAttribute('ry',r*.13);
-  sh.setAttribute('fill','rgba(255,255,255,0.5)');sh.setAttribute('transform',`rotate(-30,${r*.62},${r*.38})`);
-  svg.appendChild(sh);return svg;
+  const c=document.createElementNS(ns,'circle'); c.setAttribute('cx',r);c.setAttribute('cy',r);c.setAttribute('r',r-2);c.setAttribute('fill',`url(#${id})`);c.setAttribute('stroke',th.stroke);c.setAttribute('stroke-width','1.8'); svg.appendChild(c);
+  const sh=document.createElementNS(ns,'ellipse'); sh.setAttribute('cx',r*.62);sh.setAttribute('cy',r*.38);sh.setAttribute('rx',r*.22);sh.setAttribute('ry',r*.13);sh.setAttribute('fill','rgba(255,255,255,0.5)');sh.setAttribute('transform',`rotate(-30,${r*.62},${r*.38})`); svg.appendChild(sh);
+  return svg;
 }
 
-function spawnConfetti(cx,cy,n=20){
-  for(let i=0;i<n;i++){
-    const c=document.createElement('div');c.className='confetti';
-    const clr=CONFETTI[Math.floor(Math.random()*CONFETTI.length)];
-    const a=Math.random()*Math.PI*2,d=rnd(30,90),w=rnd(4,9),h=rnd(4,9);
-    c.style.cssText=`left:${cx}px;top:${cy}px;width:${w}px;height:${h}px;background:${clr};--cx:${Math.cos(a)*d}px;--cy:${Math.sin(a)*d}px;--cr:${rnd(-300,300)}deg;--dur:${rnd(.4,.85)}s`;
-    canvas.appendChild(c);setTimeout(()=>c.remove(),900);
-  }
-}
-function spawnRing(cx,cy,color){
-  const r=document.createElement('div');r.className='pop-ring';
-  r.style.cssText=`left:${cx}px;top:${cy}px;width:40px;height:40px;color:${color}`;
-  canvas.appendChild(r);setTimeout(()=>r.remove(),500);
-}
-function spawnRipple(cx,cy,sz){
-  const r=document.createElement('div');r.className='pop-ripple';
-  r.style.cssText=`left:${cx}px;top:${cy}px;width:${sz}px;height:${sz}px`;
-  canvas.appendChild(r);setTimeout(()=>r.remove(),400);
-}
-function spawnScorePop(cx,cy,pts){
-  const s=document.createElement('div');s.className='score-pop';
-  s.textContent=`+${pts} 🎉`;s.style.cssText=`left:${cx-20}px;top:${cy-20}px`;
-  canvas.appendChild(s);setTimeout(()=>s.remove(),1100);
-}
-function fireDart(fx,fy,tx,ty,color,cb){
-  const dart=document.createElement('div');dart.className='dart';
-  const dx=tx-fx,dy=ty-fy,dist=Math.sqrt(dx*dx+dy*dy),dur=Math.max(0.1,dist/1800);
-  dart.style.cssText=`left:${fx-3}px;top:${fy}px;--dy:${dy}px;--dx:${dx}px;--dur:${dur}s;background:linear-gradient(180deg,${color} 0%,#ff9f43 60%,#ff6eb4 100%);box-shadow:0 0 12px ${color}`;
-  canvas.appendChild(dart);setTimeout(()=>{dart.remove();cb();},dur*1000+30);
-}
+function spawnConfetti(cx,cy,n=20){ for(let i=0;i<n;i++){ const c=document.createElement('div');c.className='confetti'; const clr=CONFETTI[Math.floor(Math.random()*CONFETTI.length)],a=Math.random()*Math.PI*2,d=rnd(30,90),w=rnd(4,9),h=rnd(4,9); c.style.cssText=`left:${cx}px;top:${cy}px;width:${w}px;height:${h}px;background:${clr};--cx:${Math.cos(a)*d}px;--cy:${Math.sin(a)*d}px;--cr:${rnd(-300,300)}deg;--dur:${rnd(.4,.85)}s`; canvas.appendChild(c);setTimeout(()=>c.remove(),900); } }
+function spawnRing(cx,cy,color){ const r=document.createElement('div');r.className='pop-ring';r.style.cssText=`left:${cx}px;top:${cy}px;width:40px;height:40px;color:${color}`;canvas.appendChild(r);setTimeout(()=>r.remove(),500); }
+function spawnRipple(cx,cy,sz){ const r=document.createElement('div');r.className='pop-ripple';r.style.cssText=`left:${cx}px;top:${cy}px;width:${sz}px;height:${sz}px`;canvas.appendChild(r);setTimeout(()=>r.remove(),400); }
+function spawnScorePop(cx,cy,pts){ const s=document.createElement('div');s.className='score-pop';s.textContent=`+${pts} 🎉`;s.style.cssText=`left:${cx-20}px;top:${cy-20}px`;canvas.appendChild(s);setTimeout(()=>s.remove(),1100); }
+function fireDart(fx,fy,tx,ty,color,cb){ const dart=document.createElement('div');dart.className='dart'; const dx=tx-fx,dy=ty-fy,dist=Math.sqrt(dx*dx+dy*dy),dur=Math.max(0.1,dist/1800); dart.style.cssText=`left:${fx-3}px;top:${fy}px;--dy:${dy}px;--dx:${dx}px;--dur:${dur}s;background:linear-gradient(180deg,${color} 0%,#ff9f43 60%,#ff6eb4 100%);box-shadow:0 0 12px ${color}`; canvas.appendChild(dart);setTimeout(()=>{dart.remove();cb();},dur*1000+30); }
 
 function spawnBubble(){
   if(!gameRunning) return;
@@ -756,12 +523,7 @@ function spawnBubble(){
   el.appendChild(makeBubbleSVG(r,th));
   const wordEl=document.createElement('div');wordEl.className='bubble-word';
   const letterEls=[];
-  word.split('').forEach((ch,i)=>{
-    const span=document.createElement('span');span.className='blet';span.textContent=ch;span.style.color=th.text;
-    letterEls.push(span);
-    span.addEventListener('click',e=>{e.stopPropagation();onLetterClick(span,bObj,i);});
-    wordEl.appendChild(span);
-  });
+  word.split('').forEach((ch,i)=>{ const span=document.createElement('span');span.className='blet';span.textContent=ch;span.style.color=th.text; letterEls.push(span); span.addEventListener('click',e=>{e.stopPropagation();onLetterClick(span,bObj,i);}); wordEl.appendChild(span); });
   el.appendChild(wordEl);canvas.appendChild(el);
   const bObj={el,word,letterEls,th,y:-diam,r,baseX:x,speed:fallSpeed+rnd(0,.18),wP:Math.random()*Math.PI*2,wA:rnd(6,18),wS:rnd(.012,.025)};
   bubbles.push(bObj);
@@ -773,11 +535,9 @@ function popBubble(bObj,fx,fy){
   const cr=canvas.getBoundingClientRect(),br=bObj.el.getBoundingClientRect();
   const cx=br.left-cr.left+br.width/2,cy=br.top-cr.top+br.height/2;
   fireDart(fx,fy,cx,cy,bObj.th.text,()=>{
-    spawnConfetti(cx,cy,24);spawnRing(cx,cy,bObj.th.text);spawnRipple(cx,cy,bObj.r*2.2);
-    scFlash('happy');
+    spawnConfetti(cx,cy,24);spawnRing(cx,cy,bObj.th.text);spawnRipple(cx,cy,bObj.r*2.2);scFlash('happy');
     const pts=10*level;score+=pts;cleared++;sessionWords++;correctHits++;
-    document.getElementById('score').textContent=score;
-    document.getElementById('cleared').textContent=cleared;
+    $('score').textContent=score;$('cleared').textContent=cleared;
     spawnScorePop(cx,cy,pts);recordWord();
     bObj.el.remove();const i=bubbles.indexOf(bObj);if(i>-1)bubbles.splice(i,1);lockedBubble=null;
   });
@@ -791,7 +551,7 @@ function onLetterClick(span,bObj,idx){
     const cx=br.left-cr.left+br.width/2,cy=br.top-cr.top+br.height/2;
     spawnConfetti(cx,cy,20);spawnRing(cx,cy,bObj.th.text);
     const pts=10*level;score+=pts;cleared++;sessionWords++;correctHits++;
-    document.getElementById('score').textContent=score;document.getElementById('cleared').textContent=cleared;
+    $('score').textContent=score;$('cleared').textContent=cleared;
     spawnScorePop(cx,cy,pts);scFlash('happy');recordWord();
     setTimeout(()=>{if(bObj.el?.parentNode)bObj.el.remove();const i=bubbles.indexOf(bObj);if(i>-1)bubbles.splice(i,1);lockedBubble=null;},280);
   }
@@ -808,56 +568,38 @@ function findMatch(typed){
 
 input.addEventListener('input',()=>{
   if(!gameRunning) return;
-  const typed=input.value.toLowerCase();
-  clearAllHL();
+  const typed=input.value.toLowerCase(); clearAllHL();
   if(!typed){lockedBubble=null;return;}
-  const target=findMatch(typed);
-  if(!target){
-    lockedBubble=null;input.style.borderColor='var(--danger)';
-    setTimeout(()=>input.style.borderColor='',400);return;
-  }
-  lockedBubble=target;
-  target.el.classList.remove('targeted');void target.el.offsetWidth;target.el.classList.add('targeted');
-  highlightBubble(target,typed);
+  const t=findMatch(typed);
+  if(!t){lockedBubble=null;input.style.borderColor='var(--danger)';setTimeout(()=>input.style.borderColor='',400);return;}
+  lockedBubble=t; t.el.classList.remove('targeted');void t.el.offsetWidth;t.el.classList.add('targeted');
+  highlightBubble(t,typed);
 });
 
 input.addEventListener('keydown',e=>{
   if(!gameRunning){if(e.key==='Enter')startGame();return;}
   if(e.key!=='Enter') return;
   e.preventDefault();
-  const typed=input.value.trim().toLowerCase();
-  if(!typed) return;
+  const typed=input.value.trim().toLowerCase(); if(!typed) return;
   totalAttempts++;
-  const target=bubbles.find(b=>b.word===typed)||findMatch(typed);
-  if(!target){
-    input.classList.remove('input-shake');void input.offsetWidth;input.classList.add('input-shake');
-    scFlash('sad');input.value='';lockedBubble=null;clearAllHL();return;
-  }
+  const t=bubbles.find(b=>b.word===typed)||findMatch(typed);
+  if(!t){input.classList.remove('input-shake');void input.offsetWidth;input.classList.add('input-shake');scFlash('sad');input.value='';lockedBubble=null;clearAllHL();return;}
   clearAllHL();input.value='';lockedBubble=null;
-  popBubble(target,canvas.offsetWidth/2,canvas.offsetHeight);
+  popBubble(t,canvas.offsetWidth/2,canvas.offsetHeight);
 });
 
 function startLevelTimer(){
   clearInterval(lvlInterval);
   const cfg=getLvl(level);lvlTimeLeft=cfg.dur;lvlTotalTime=cfg.dur;updateTimer();
-  lvlInterval=setInterval(()=>{
-    if(!gameRunning){clearInterval(lvlInterval);return;}
-    lvlTimeLeft--;updateTimer();
-    if(lvlTimeLeft<=0){clearInterval(lvlInterval);advanceLevel();}
-  },1000);
+  lvlInterval=setInterval(()=>{ if(!gameRunning){clearInterval(lvlInterval);return;} lvlTimeLeft--;updateTimer(); if(lvlTimeLeft<=0){clearInterval(lvlInterval);advanceLevel();} },1000);
 }
 
 function advanceLevel(){
-  saveCurrentSession(false);
-  level++;
+  saveCurrentSession(false); level++;
   const cfg=getLvl(level);fallSpeed=cfg.speed;spawnDelay=cfg.spawn;
-  document.getElementById('level-val').textContent=level;
-  document.getElementById('level-badge').textContent=`LVL ${level}`;
+  $('level-val').textContent=level; $('level-badge').textContent=`LVL ${level}`;
   bubbles.forEach(b=>b.speed=clamp(b.speed+0.1,0.3,2));
-  const banner=document.getElementById('lvl-banner');
-  banner.innerHTML=`🎊 LEVEL ${level}! 🎊`;banner.style.display='block';
-  banner.style.animation='none';void banner.offsetWidth;
-  banner.style.animation='lvl-pop 1.8s ease-out forwards';
+  const banner=$('lvl-banner'); banner.innerHTML=`🎊 LEVEL ${level}! 🎊`;banner.style.display='block';banner.style.animation='none';void banner.offsetWidth;banner.style.animation='lvl-pop 1.8s ease-out forwards';
   setTimeout(()=>banner.style.display='none',1900);
   scFlash('lvl');openLeaderboard(false);startLevelTimer();
 }
@@ -866,11 +608,8 @@ function tick(){
   if(!gameRunning) return;
   const ch=canvas.offsetHeight;
   for(let i=bubbles.length-1;i>=0;i--){
-    const b=bubbles[i];
-    if(!b.el.parentNode){bubbles.splice(i,1);continue;}
-    b.y+=b.speed;b.wP+=b.wS;
-    b.el.style.top=b.y+'px';
-    b.el.style.left=(b.baseX+Math.sin(b.wP)*b.wA)+'px';
+    const b=bubbles[i]; if(!b.el.parentNode){bubbles.splice(i,1);continue;}
+    b.y+=b.speed;b.wP+=b.wS; b.el.style.top=b.y+'px'; b.el.style.left=(b.baseX+Math.sin(b.wP)*b.wA)+'px';
     if(b.y>=ch-10){
       const cr=canvas.getBoundingClientRect(),br=b.el.getBoundingClientRect();
       spawnConfetti(br.left-cr.left+br.width/2,ch-20,10);
@@ -882,10 +621,7 @@ function tick(){
   animId=requestAnimationFrame(tick);
 }
 
-function saveCurrentSession(survived){
-  if(!currentUser) return;
-  recordSession({name:currentUser,wpm:currentWPM,score,words:sessionWords,correct:correctHits,attempts:totalAttempts,level,survived,date:Date.now()});
-}
+function saveCurrentSession(survived){ if(!currentUser) return; recordSession({name:currentUser,wpm:currentWPM,score,words:sessionWords,correct:correctHits,attempts:totalAttempts,level,survived,date:Date.now()}); }
 
 function startGame(){
   if(!currentUser) return;
@@ -894,15 +630,10 @@ function startGame(){
   score=0;lives=3;cleared=0;level=1;lockedBubble=null;
   sessionWords=0;wordTimestamps.length=0;currentWPM=0;correctHits=0;totalAttempts=0;
   const cfg=getLvl(1);fallSpeed=cfg.speed;spawnDelay=cfg.spawn;
-  document.getElementById('score').textContent=0;
-  document.getElementById('cleared').textContent=0;
-  document.getElementById('level-val').textContent=1;
-  document.getElementById('level-badge').textContent='LVL 1';
-  document.getElementById('wpm-display').textContent=0;
-  updateLives();
-  document.getElementById('overlay').style.display='none';
+  $('score').textContent=0;$('cleared').textContent=0;$('level-val').textContent=1;$('level-badge').textContent='LVL 1';$('wpm-display').textContent=0;
+  updateLives(); $('overlay').style.display='none';
   gameRunning=true;input.value='';input.focus();
-  document.getElementById('start-btn').textContent='RESTART 🔄';
+  $('start-btn').textContent='RESTART 🔄';
   cancelAnimationFrame(animId);clearTimeout(spawnTimer);clearInterval(lvlInterval);
   spawnBubble();animId=requestAnimationFrame(tick);startLevelTimer();
 }
@@ -914,46 +645,28 @@ function endGame(survived,silent=false){
   if(!silent&&currentUser) saveCurrentSession(survived);
   if(silent) return;
   const pct=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0;
-  const ov=document.getElementById('overlay');
-  ov.innerHTML=`
-    <div class="ov-emoji">${survived?'🏆':'💀'}</div>
-    <div class="ov-title" style="font-size:38px;background:linear-gradient(135deg,${survived?'var(--cyan),var(--green)':'var(--danger),var(--pink)'});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${survived?'SURVIVED!':'GAME OVER'}</div>
-    <div class="ov-score">${score}</div>
-    <div style="display:flex;gap:14px;font-size:13px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center">
-      <span>WPM <b style="color:var(--orange)">${currentWPM}</b></span>
-      <span>Accuracy <b style="color:var(--green)">${pct}%</b></span>
-      <span>Words <b style="color:var(--text)">${sessionWords}</b></span>
-      <span>Level <b style="color:var(--text)">${level}</b></span>
-    </div>
-    <p class="ov-tip">▶ Click START or check the leaderboard!</p>
-  `;
+  const ov=$('overlay');
+  ov.innerHTML=`<div class="ov-emoji">${survived?'🏆':'💀'}</div><div class="ov-title" style="font-size:38px;background:linear-gradient(135deg,${survived?'var(--cyan),var(--green)':'var(--danger),var(--pink)'});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${survived?'SURVIVED!':'GAME OVER'}</div><div class="ov-score">${score}</div><div style="display:flex;gap:14px;font-size:13px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center"><span>WPM <b style="color:var(--orange)">${currentWPM}</b></span><span>Accuracy <b style="color:var(--green)">${pct}%</b></span><span>Words <b style="color:var(--text)">${sessionWords}</b></span><span>Level <b style="color:var(--text)">${level}</b></span></div><p class="ov-tip">▶ Click START or check the leaderboard!</p>`;
   ov.style.display='flex';
-  document.getElementById('start-btn').textContent='PLAY AGAIN 🎮';
+  $('start-btn').textContent='PLAY AGAIN 🎮';
   input.value='';
   setTimeout(()=>openLeaderboard(true),700);
 }
 
-// Deco bubbles
-function spawnDecoBubbles(){
-  const cw=canvas.offsetWidth,ch=canvas.offsetHeight;
-  for(let i=0;i<8;i++){
-    const d=document.createElement('div');d.className='deco-bubble';
-    const sz=rnd(20,60);
-    d.style.cssText=`left:${rnd(5,cw-70)}px;top:${rnd(10,ch-70)}px;width:${sz}px;height:${sz}px;animation-duration:${rnd(4,9)}s;animation-delay:${rnd(0,4)}s`;
-    canvas.appendChild(d);
-  }
+// deco bubbles
+const cw=canvas.offsetWidth,ch=canvas.offsetHeight;
+for(let i=0;i<8;i++){ const d=document.createElement('div');d.className='deco-bubble';const sz=rnd(20,60);d.style.cssText=`left:${rnd(5,cw-70)}px;top:${rnd(10,ch-70)}px;width:${sz}px;height:${sz}px;animation-duration:${rnd(4,9)}s;animation-delay:${rnd(0,4)}s`;canvas.appendChild(d); }
+
+$('start-btn').addEventListener('click',startGame);
+
+} // end init()
+
+// Run init after DOM is fully loaded
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
 }
-
-document.getElementById('start-btn').addEventListener('click', startGame);
-
-// ── BOOT ──────────────────────────────────────────────
-let currentTab = 'wpm';
-spawnDecoBubbles();
-tryAutoLogin().then(ok=>{
-  if(!ok) document.getElementById('login-screen').classList.remove('hidden');
-});
-
-}); // end DOMContentLoaded
 </script>
 </body>
 </html>
