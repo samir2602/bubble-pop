@@ -632,8 +632,6 @@ function advanceLevel(){
 function tick(){
   if(!gameRunning) return;
   const ch=canvas.offsetHeight;
-  // Trigger zone = bottom of canvas minus one bubble radius so it pops RIGHT at the danger line
-  const hitY = ch - 8;
 
   for(let i=bubbles.length-1;i>=0;i--){
     const b=bubbles[i]; if(!b.el.parentNode){bubbles.splice(i,1);continue;}
@@ -641,18 +639,16 @@ function tick(){
     b.el.style.top=b.y+'px';
     b.el.style.left=(b.baseX+Math.sin(b.wP)*b.wA)+'px';
 
-    // bubble bottom edge = b.y + b.r*2
-    if(b.y + b.r*2 >= hitY){
-      const cr=canvas.getBoundingClientRect();
-      const cx=b.baseX+Math.sin(b.wP)*b.wA + b.r;
-      const cy=hitY - 10;
+    // Pop the moment the TOP of the bubble touches the canvas bottom edge
+    if(b.y >= ch - b.r*2){
+      const cx = (b.baseX+Math.sin(b.wP)*b.wA) + b.r;
+      const cy = ch - 4;
 
-      // burst effect at danger line
       spawnConfetti(cx, cy, 14);
       spawnRing(cx, cy, '#ff4757');
-      spawnRipple(cx, cy, b.r*1.8);
-
+      spawnRipple(cx, cy, b.r*2);
       scFlash('sad');
+
       b.el.remove(); bubbles.splice(i,1);
       if(lockedBubble===b) lockedBubble=null;
       lives--; updateLives();
