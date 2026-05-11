@@ -23,20 +23,37 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .screen.hidden{opacity:0;pointer-events:none}
 
 /* LOGIN */
-.login-box{background:var(--card);border:1px solid var(--border);border-radius:28px;padding:36px 40px;max-width:400px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:16px;align-items:center;position:relative;overflow:hidden}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:28px;padding:36px 32px;max-width:400px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:16px;align-items:center;position:relative;overflow:hidden}
 .login-box::before{content:'';position:absolute;inset:0;border-radius:28px;background:linear-gradient(135deg,rgba(255,255,255,0.04),transparent);pointer-events:none}
 .login-emoji{font-size:52px;line-height:1}
 .login-title{font-family:'Fredoka One';font-size:34px;letter-spacing:2px;background:linear-gradient(135deg,var(--cyan),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .login-sub{font-size:12px;color:var(--muted);font-weight:700;letter-spacing:1px;text-align:center}
-.login-input{width:100%;padding:13px 18px;border-radius:14px;border:2px solid var(--border);background:var(--surface);color:var(--text);font-family:'Nunito';font-size:16px;font-weight:700;outline:none;letter-spacing:2px;transition:border-color 0.2s,box-shadow 0.2s}
+.login-input{
+  width:100%;padding:15px 18px;border-radius:14px;
+  border:2px solid var(--border);
+  background:var(--surface);color:var(--text);
+  font-family:'Nunito';font-size:16px;font-weight:700; /* 16px prevents iOS zoom */
+  outline:none;letter-spacing:1px;
+  transition:border-color 0.2s,box-shadow 0.2s;
+  -webkit-appearance:none; /* fix iOS styling */
+  touch-action:manipulation;
+}
 .login-input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,229,255,0.15)}
-.login-input::placeholder{color:var(--muted);letter-spacing:1px;font-size:13px;font-weight:600}
-.login-btn{width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,var(--cyan),var(--purple));color:#fff;font-family:'Fredoka One';font-size:20px;letter-spacing:2px;cursor:pointer;transition:transform 0.15s,box-shadow 0.2s;box-shadow:0 6px 24px rgba(0,229,255,0.3)}
+.login-input::placeholder{color:var(--muted);letter-spacing:1px;font-size:14px;font-weight:600}
+.login-btn{
+  width:100%;padding:16px;border-radius:14px;border:none;
+  background:linear-gradient(135deg,var(--cyan),var(--purple));
+  color:#fff;font-family:'Fredoka One';font-size:20px;letter-spacing:2px;
+  cursor:pointer;transition:transform 0.15s,box-shadow 0.2s;
+  box-shadow:0 6px 24px rgba(0,229,255,0.3);
+  -webkit-appearance:none;touch-action:manipulation;
+  min-height:54px; /* big touch target */
+}
 .login-btn:hover{transform:translateY(-2px)}
 .login-btn:active{transform:scale(0.97)}
-.login-err{font-size:12px;color:var(--danger);font-weight:700;min-height:16px;text-align:center}
-.login-toggle{font-size:12px;color:var(--muted);font-weight:700;text-align:center}
-.login-toggle b{color:var(--cyan);text-decoration:underline;cursor:pointer}
+.login-err{font-size:13px;color:var(--danger);font-weight:700;min-height:18px;text-align:center;width:100%}
+.login-toggle{font-size:13px;color:var(--muted);font-weight:700;text-align:center;padding:4px 0}
+.login-toggle b{color:var(--cyan);text-decoration:underline;cursor:pointer;padding:4px 8px} /* bigger tap area */
 
 /* LEADERBOARD */
 #lb-overlay{position:fixed;inset:0;z-index:200;background:rgba(16,21,46,0.96);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:16px;transition:opacity 0.3s}
@@ -178,10 +195,17 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div class="login-emoji">🫧</div>
     <div class="login-title">BUBBLE POP</div>
     <p class="login-sub" id="login-mode-label">SIGN IN TO PLAY</p>
-    <input class="login-input" id="login-name" type="text" placeholder="your name" maxlength="18" autocomplete="off" spellcheck="false"/>
-    <input class="login-input" id="login-pass" type="password" placeholder="password" maxlength="32" autocomplete="off"/>
+    <input class="login-input" id="login-name"
+      type="text" placeholder="your name"
+      maxlength="18" autocomplete="username"
+      autocorrect="off" autocapitalize="none" spellcheck="false"
+      inputmode="text" enterkeyhint="next"/>
+    <input class="login-input" id="login-pass"
+      type="password" placeholder="password"
+      maxlength="32" autocomplete="current-password"
+      inputmode="text" enterkeyhint="go"/>
     <div class="login-err" id="login-err"></div>
-    <button class="login-btn" id="login-btn">LET'S PLAY! 🎮</button>
+    <button class="login-btn" id="login-btn" type="button">LET'S PLAY! 🎮</button>
     <div class="login-toggle">
       <span id="login-toggle-text">No account?</span>&nbsp;<b id="login-switch">Sign up</b>
     </div>
@@ -266,12 +290,12 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc,
 //  Get it from: Firebase Console → Project Settings → Your Apps
 // ══════════════════════════════════════════════════════
 const firebaseConfig = {
-  apiKey: "AIzaSyBosqCCoUrkrl5uxbBXUvgIdzx-x7tNd7M",
-  authDomain: "bubble-game-9d168.firebaseapp.com",
-  projectId: "bubble-game-9d168",
-  storageBucket: "bubble-game-9d168.firebasestorage.app",
+  apiKey:            "AIzaSyBosqCCoUrkrl5uxbBXUvgIdzx-x7tNd7M",
+  authDomain:        "bubble-game-9d168.firebaseapp.com",
+  projectId:         "bubble-game-9d168",
+  storageBucket:     "bubble-game-9d168.firebasestorage.app",
   messagingSenderId: "300400641879",
-  appId: "1:300400641879:web:26ea3f6ff6af2be413e012"z
+  appId:             "1:300400641879:web:26ea3f6ff6af2be413e012"
 };
 
 const FB_READY = !Object.values(firebaseConfig).some(v=>v.startsWith('PASTE_YOUR'));
@@ -374,8 +398,6 @@ function setLoginMode(su){
   $('login-switch').textContent=su?'Sign in':'Sign up';
   $('login-err').textContent='';
 }
-$('login-switch').addEventListener('click',()=>setLoginMode(!isSignup));
-
 async function doLogin(){
   const name=$('login-name').value.trim();
   const pass=$('login-pass').value;
@@ -395,9 +417,12 @@ function doLoginUser(name,passHash){
   $('login-screen').classList.add('hidden');
 }
 
-$('login-btn').addEventListener('click',doLogin);
-$('login-pass').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-$('login-name').addEventListener('keydown',e=>{ if(e.key==='Enter') $('login-pass').focus(); });
+$('login-btn').addEventListener('click', doLogin);
+$('login-btn').addEventListener('touchend', e=>{ e.preventDefault(); doLogin(); });
+$('login-pass').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doLogin(); } });
+$('login-name').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); $('login-pass').focus(); } });
+$('login-switch').addEventListener('click', ()=>setLoginMode(!isSignup));
+$('login-switch').addEventListener('touchend', e=>{ e.preventDefault(); setLoginMode(!isSignup); });
 $('user-badge').addEventListener('click',()=>{
   if(!confirm(`Log out as ${currentUser}?`)) return;
   LS.clearSession(); currentUser=null;
