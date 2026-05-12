@@ -222,8 +222,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       </div>
     </div>
     <div class="lb-tabs">
-      <button class="lb-tab active" data-tab="wpm">🚀 WPM</button>
+      <button class="lb-tab active" data-tab="time">⏱️ Time</button>
       <button class="lb-tab" data-tab="score">⭐ Score</button>
+      <button class="lb-tab" data-tab="wpm">🚀 WPM</button>
       <button class="lb-tab" data-tab="accuracy">🎯 Accuracy</button>
       <button class="lb-tab" data-tab="sessions">📋 My Games</button>
     </div>
@@ -241,15 +242,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   <div id="top-bar">
     <div id="hud">
       <div class="hud-cell"><span class="hud-label">Score</span><span class="hud-val score-val" id="score">0</span></div>
-      <div class="hud-cell"><span class="hud-label">Level</span><span class="hud-val level-val" id="level-val">1</span></div>
-      <div class="hud-cell" style="padding:4px;justify-content:center">
-        <div id="timer-ring">
-          <svg viewBox="0 0 44 44"><circle class="ring-track" cx="22" cy="22" r="18"/><circle class="ring-fill" id="ring-arc" cx="22" cy="22" r="18" stroke-dasharray="113.1" stroke-dashoffset="0"/></svg>
-          <div id="timer-center">3:00</div>
-        </div>
-      </div>
-      <div class="hud-cell"><span class="hud-label">Popped</span><span class="hud-val cleared-val" id="cleared">0</span></div>
+      <div class="hud-cell"><span class="hud-label">Time</span><span class="hud-val" style="color:var(--cyan);font-size:20px" id="timer-display">0:00</span></div>
       <div class="hud-cell"><span class="hud-label">WPM</span><span class="hud-val wpm-val" id="wpm-display">0</span></div>
+      <div class="hud-cell"><span class="hud-label">Accuracy</span><span class="hud-val" style="color:var(--green);font-size:18px" id="acc-display">0%</span></div>
+      <div class="hud-cell"><span class="hud-label">Popped</span><span class="hud-val cleared-val" id="cleared">0</span></div>
     </div>
     <button id="lb-btn">🏆</button>
     <div id="user-badge"><span>🫧</span><span class="ub-name" id="ub-name">—</span></div>
@@ -363,31 +359,25 @@ async function getBoard(field='bestWpm',lim=100){
 async function saveToBoard(data){
   if(!FB_READY){
     const b=LS.getBoard(), i=b.findIndex(r=>r.name===data.name);
-    if(i===-1){ b.push({name:data.name,bestWpm:data.wpm,bestScore:data.score,totalWords:data.words,correct:data.correct,attempts:data.attempts,bestLevel:data.level}); }
-    else{ const r=b[i]; if(data.wpm>r.bestWpm)r.bestWpm=data.wpm; if(data.score>r.bestScore){r.bestScore=data.score;r.bestLevel=data.level;} r.totalWords=(r.totalWords||0)+data.words; r.correct=(r.correct||0)+data.correct; r.attempts=(r.attempts||0)+data.attempts; }
+    if(i===-1){ b.push({name:data.name,bestWpm:data.wpm,bestScore:data.score,bestTime:data.timeSec||0,totalWords:data.words,correct:data.correct,attempts:data.attempts}); }
+    else{ const r=b[i]; if(data.wpm>r.bestWpm)r.bestWpm=data.wpm; if(data.score>r.bestScore)r.bestScore=data.score; if((data.timeSec||0)>r.bestTime)r.bestTime=data.timeSec||0; r.totalWords=(r.totalWords||0)+data.words; r.correct=(r.correct||0)+data.correct; r.attempts=(r.attempts||0)+data.attempts; }
     LS.saveBoard(b); return;
   }
   const key=data.name.toLowerCase();
   try{
     const s=await getDoc(doc(db,'leaderboard',key));
-    if(!s.exists()){ await setDoc(doc(db,'leaderboard',key),{name:data.name,bestWpm:data.wpm,bestScore:data.score,totalWords:data.words,correct:data.correct,attempts:data.attempts,bestLevel:data.level,lastPlayed:serverTimestamp()}); }
-    else{ const c=s.data(); await updateDoc(doc(db,'leaderboard',key),{bestWpm:Math.max(c.bestWpm||0,data.wpm),bestScore:Math.max(c.bestScore||0,data.score),totalWords:(c.totalWords||0)+data.words,correct:(c.correct||0)+data.correct,attempts:(c.attempts||0)+data.attempts,bestLevel:Math.max(c.bestLevel||1,data.level),lastPlayed:serverTimestamp()}); }
+    if(!s.exists()){ await setDoc(doc(db,'leaderboard',key),{name:data.name,bestWpm:data.wpm,bestScore:data.score,bestTime:data.timeSec||0,totalWords:data.words,correct:data.correct,attempts:data.attempts,lastPlayed:serverTimestamp()}); }
+    else{ const c=s.data(); await updateDoc(doc(db,'leaderboard',key),{bestWpm:Math.max(c.bestWpm||0,data.wpm),bestScore:Math.max(c.bestScore||0,data.score),bestTime:Math.max(c.bestTime||0,data.timeSec||0),totalWords:(c.totalWords||0)+data.words,correct:(c.correct||0)+data.correct,attempts:(c.attempts||0)+data.attempts,lastPlayed:serverTimestamp()}); }
   }catch(e){ console.warn('saveBoard fail',e.message); }
 }
 
 // ══ MAIN INIT — runs after DOM ready ══════════════════
 async function init(){
 
-let currentUser=null, isSignup=false, currentTab='wpm', gameRunning=false;
-let bubbles=[],score=0,lives=3,cleared=0,level=1;
-let animId=null,spawnTimer=null,fallSpeed=0.32,spawnDelay=3000;
-let lvlTimeLeft=180,lvlTotalTime=180,lvlInterval=null,lockedBubble=null;
-const wordTimestamps=[];
-let currentWPM=0,sessionWords=0,correctHits=0,totalAttempts=0;
+let currentUser=null, isSignup=false, currentTab='time', gameRunning=false;
 
 const $=id=>document.getElementById(id);
 const flashEl=$('flash'), canvas=$('canvas'), input=$('word-input');
-const CIRC=113.1;
 
 // ── Login UI ──────────────────────────────────────────
 function setLoginMode(su){
@@ -426,7 +416,7 @@ $('login-switch').addEventListener('touchend', e=>{ e.preventDefault(); setLogin
 $('user-badge').addEventListener('click',()=>{
   if(!confirm(`Log out as ${currentUser}?`)) return;
   LS.clearSession(); currentUser=null;
-  if(gameRunning) endGame(false,true);
+  if(gameRunning) endGame(true);
   closeLeaderboard();
   $('login-name').value=''; $('login-pass').value=''; $('login-err').textContent='';
   setLoginMode(false); $('login-screen').classList.remove('hidden');
@@ -451,6 +441,7 @@ $('lb-cont-btn').addEventListener('click',closeLeaderboard);
 document.querySelectorAll('.lb-tab').forEach(t=>{ t.addEventListener('click',()=>{ document.querySelectorAll('.lb-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); currentTab=t.dataset.tab; renderLB(currentTab); }); });
 
 function acc(r){ const a=r.attempts||0,c=r.correct||0; return a>0?Math.round(c/a*100):0; }
+function fmtTime(s){ return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`; }
 function fmtDate(ts){ const d=new Date(ts); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`; }
 
 async function renderLB(tab){
@@ -458,41 +449,85 @@ async function renderLB(tab){
   if(tab==='sessions'){
     const s=LS.getSessions(currentUser);
     cont.innerHTML=!s.length?'<div class="lb-empty">No games yet! Play one 🎯</div>':
-      `<div class="lb-row sess hdr"><span>Date</span><span style="text-align:right">Lvl</span><span style="text-align:right">WPM</span><span style="text-align:right">Acc</span><span style="text-align:right">Score</span></div>`+
-      s.map((x,i)=>`<div class="lb-row sess${i===0?' me':''}"><div class="lb-muted" style="text-align:left">${fmtDate(x.date)}</div><div class="lb-muted">Lv${x.level}</div><div class="lb-num" style="color:var(--orange)">${x.wpm}</div><div class="lb-num" style="color:var(--green);font-size:13px">${acc(x)}%</div><div class="lb-num" style="color:var(--yellow)">${x.score}</div></div>`).join('');
+      `<div class="lb-row sess hdr"><span>Date</span><span style="text-align:right">Time</span><span style="text-align:right">WPM</span><span style="text-align:right">Acc</span><span style="text-align:right">Score</span></div>`+
+      s.map((x,i)=>`<div class="lb-row sess${i===0?' me':''}">
+        <div class="lb-muted" style="text-align:left">${fmtDate(x.date)}</div>
+        <div class="lb-muted">${fmtTime(x.timeSec||0)}</div>
+        <div class="lb-num" style="color:var(--orange)">${x.wpm}</div>
+        <div class="lb-num" style="color:var(--green);font-size:13px">${acc(x)}%</div>
+        <div class="lb-num" style="color:var(--yellow)">${x.score}</div>
+      </div>`).join('');
     renderMyStats([]); return;
   }
-  const field=tab==='wpm'?'bestWpm':tab==='score'?'bestScore':'correct';
-  let board=await getBoard(field,100);
+  // pick firebase field & sort
+  const fieldMap={time:'bestTime',score:'bestScore',wpm:'bestWpm',accuracy:'correct'};
+  let board=await getBoard(fieldMap[tab]||'bestTime',100);
   if(tab==='accuracy') board=board.filter(r=>(r.attempts||0)>=3).sort((a,b)=>acc(b)-acc(a));
+
   if(!board.length){ cont.innerHTML='<div class="lb-empty">No players yet 🫧<br>Be the first!</div>'; }
   else{
-    const colLabel=tab==='wpm'?'WPM':tab==='score'?'Score':'Acc%';
-    const colColor=tab==='wpm'?'var(--orange)':tab==='score'?'var(--yellow)':'var(--green)';
+    const colLabel=tab==='time'?'Time':tab==='score'?'Score':tab==='wpm'?'WPM':'Acc%';
+    const colColor=tab==='time'?'var(--cyan)':tab==='score'?'var(--yellow)':tab==='wpm'?'var(--orange)':'var(--green)';
     const myRank=board.findIndex(r=>r.name===currentUser);
     const rows=board.slice(0,50).map((r,i)=>{
       const isMe=r.name===currentUser;
       const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`<span style="color:var(--muted);font-size:11px">#${i+1}</span>`;
-      const main=tab==='wpm'?(r.bestWpm||0):tab==='score'?(r.bestScore||0):acc(r)+'%';
-      return `<div class="lb-row${isMe?' me':''}"><div class="lb-rank">${medal}</div><div class="lb-name" style="color:${isMe?'var(--cyan)':'var(--text)'}">${r.name}${isMe?' 👤':''}</div><div class="lb-num" style="color:${colColor}">${main}</div><div class="lb-muted">${tab==='score'?`Lv${r.bestLevel||1}`:(r.totalWords||0)}</div><div class="lb-num" style="color:var(--muted);font-size:12px">${tab==='wpm'?acc(r)+'%':(r.bestWpm||0)}</div></div>`;
+      const main=tab==='time'?fmtTime(r.bestTime||0):tab==='score'?(r.bestScore||0):tab==='wpm'?(r.bestWpm||0):acc(r)+'%';
+      const sub1=tab==='score'?`${r.bestWpm||0} wpm`:(r.totalWords||0)+' words';
+      const sub2=tab==='time'?`${r.bestScore||0} pts`:acc(r)+'%';
+      return `<div class="lb-row${isMe?' me':''}">
+        <div class="lb-rank">${medal}</div>
+        <div class="lb-name" style="color:${isMe?'var(--cyan)':'var(--text)'}">${r.name}${isMe?' 👤':''}</div>
+        <div class="lb-num" style="color:${colColor}">${main}</div>
+        <div class="lb-muted">${sub1}</div>
+        <div class="lb-num" style="color:var(--muted);font-size:12px">${sub2}</div>
+      </div>`;
     }).join('');
     const me=board.find(r=>r.name===currentUser);
-    const pinned=myRank>=50&&me?`<div style="text-align:center;padding:4px;font-size:10px;color:var(--muted)">· · · your rank · · ·</div><div class="lb-row me"><div class="lb-rank"><span style="font-size:10px">#${myRank+1}</span></div><div class="lb-name" style="color:var(--cyan)">${currentUser} 👤</div><div class="lb-num" style="color:${colColor}">${tab==='wpm'?(me.bestWpm||0):tab==='score'?(me.bestScore||0):acc(me)+'%'}</div><div class="lb-muted">${tab==='score'?`Lv${me.bestLevel||1}`:(me.totalWords||0)}</div><div class="lb-num" style="color:var(--muted);font-size:12px">${tab==='wpm'?acc(me)+'%':(me.bestWpm||0)}</div></div>`:'';
-    cont.innerHTML=`<div class="lb-row hdr"><span>#</span><span>Player</span><span style="text-align:right">${colLabel}</span><span style="text-align:right">${tab==='score'?'Lvl':'Words'}</span><span style="text-align:right">${tab==='wpm'?'Acc':'WPM'}</span></div>`+rows+pinned;
+    const pinned=myRank>=50&&me?`
+      <div style="text-align:center;padding:4px;font-size:10px;color:var(--muted)">· · · your rank · · ·</div>
+      <div class="lb-row me">
+        <div class="lb-rank"><span style="font-size:10px">#${myRank+1}</span></div>
+        <div class="lb-name" style="color:var(--cyan)">${currentUser} 👤</div>
+        <div class="lb-num" style="color:${colColor}">${tab==='time'?fmtTime(me.bestTime||0):tab==='score'?(me.bestScore||0):tab==='wpm'?(me.bestWpm||0):acc(me)+'%'}</div>
+        <div class="lb-muted">${tab==='score'?`${me.bestWpm||0} wpm`:(me.totalWords||0)+' words'}</div>
+        <div class="lb-num" style="color:var(--muted);font-size:12px">${tab==='time'?`${me.bestScore||0} pts`:acc(me)+'%'}</div>
+      </div>`:'';
+    cont.innerHTML=`<div class="lb-row hdr"><span>#</span><span>Player</span><span style="text-align:right">${colLabel}</span><span style="text-align:right">Words</span><span style="text-align:right">${tab==='time'?'Score':'Acc%'}</span></div>`+rows+pinned;
   }
   renderMyStats(board);
 }
 
 async function renderMyStats(board){
-  if(!board.length) board=await getBoard('bestWpm',200);
+  if(!board.length) board=await getBoard('bestTime',200);
   const me=board.find(r=>r.name===currentUser);
-  const rank=[...board].sort((a,b)=>(b.bestWpm||0)-(a.bestWpm||0)).findIndex(r=>r.name===currentUser);
-  $('lb-my-stats').innerHTML=`<div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--cyan);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${currentUser||'—'}</div><div class="lb-stat-label">You</div></div><div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--orange)">${me?.bestWpm||0}</div><div class="lb-stat-label">Best WPM</div></div><div class="lb-stat-cell"><div class="lb-stat-val">${rank>=0?'#'+(rank+1):'—'}</div><div class="lb-stat-label">Global Rank</div></div><div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--green)">${acc(me||{})}%</div><div class="lb-stat-label">Accuracy</div></div>`;
+  const rank=[...board].sort((a,b)=>(b.bestTime||0)-(a.bestTime||0)).findIndex(r=>r.name===currentUser);
+  $('lb-my-stats').innerHTML=`
+    <div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--cyan);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${currentUser||'—'}</div><div class="lb-stat-label">You</div></div>
+    <div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--cyan)">${fmtTime(me?.bestTime||0)}</div><div class="lb-stat-label">Best Time</div></div>
+    <div class="lb-stat-cell"><div class="lb-stat-val">${rank>=0?'#'+(rank+1):'—'}</div><div class="lb-stat-label">Time Rank</div></div>
+    <div class="lb-stat-cell"><div class="lb-stat-val" style="color:var(--green)">${acc(me||{})}%</div><div class="lb-stat-label">Accuracy</div></div>
+  `;
 }
 
 // ── Game constants ────────────────────────────────────
-const LEVELS=[{dur:180,spawn:3000,speed:0.32},{dur:150,spawn:2500,speed:0.44},{dur:120,spawn:2000,speed:0.58},{dur:100,spawn:1600,speed:0.72},{dur:90,spawn:1300,speed:0.88}];
-const getLvl=l=>LEVELS[Math.min(l-1,LEVELS.length-1)];
+// Speed milestones — difficulty increases every 30 seconds automatically
+const SPEED_STEPS=[
+  {atSec:0,   spawn:3200, speed:0.32},
+  {atSec:30,  spawn:2800, speed:0.40},
+  {atSec:60,  spawn:2400, speed:0.50},
+  {atSec:90,  spawn:2000, speed:0.62},
+  {atSec:120, spawn:1700, speed:0.74},
+  {atSec:180, spawn:1400, speed:0.88},
+  {atSec:240, spawn:1200, speed:1.02},
+  {atSec:300, spawn:1000, speed:1.18},
+];
+function getSpeedForTime(sec){
+  let cfg=SPEED_STEPS[0];
+  for(const s of SPEED_STEPS){ if(sec>=s.atSec) cfg=s; else break; }
+  return cfg;
+}
+
 const WORDS=['apple','brave','cloud','dance','eagle','flame','grace','happy','ionic','jolly','karma','lemon','magic','noodle','ocean','pizza','queen','robin','sunny','tulip','bloom','crisp','enjoy','fizzy','honey','indie','jumpy','kitty','lolly','mango','nifty','olive','poppy','rapid','smile','tasty','whirl','amber','bliss','cozy','dizzy','funky','goofy','hyper','zippy','vivid','quirk','witty','zesty','daffy','boost'];
 const THEMES=[{fill:'rgba(0,229,255,0.18)',stroke:'rgba(0,229,255,0.7)',glow:'rgba(0,229,255,0.4)',text:'#00e5ff'},{fill:'rgba(255,110,180,0.18)',stroke:'rgba(255,110,180,0.7)',glow:'rgba(255,110,180,0.4)',text:'#ff6eb4'},{fill:'rgba(255,225,53,0.18)',stroke:'rgba(255,225,53,0.7)',glow:'rgba(255,225,53,0.4)',text:'#ffe135'},{fill:'rgba(77,255,145,0.18)',stroke:'rgba(77,255,145,0.7)',glow:'rgba(77,255,145,0.4)',text:'#4dff91'},{fill:'rgba(255,159,67,0.18)',stroke:'rgba(255,159,67,0.7)',glow:'rgba(255,159,67,0.4)',text:'#ff9f43'},{fill:'rgba(199,125,255,0.18)',stroke:'rgba(199,125,255,0.7)',glow:'rgba(199,125,255,0.4)',text:'#c77dff'}];
 const CONFETTI=['#ff6eb4','#00e5ff','#ffe135','#4dff91','#ff9f43','#c77dff','#fff'];
@@ -502,15 +537,40 @@ const rndWord=()=>WORDS[Math.floor(Math.random()*WORDS.length)];
 const rndTheme=()=>THEMES[Math.floor(Math.random()*THEMES.length)];
 function scFlash(t){flashEl.className='';void flashEl.offsetWidth;flashEl.className=t}
 
+// ── Game state ────────────────────────────────────────
+let bubbles=[],score=0,lives=3,cleared=0;
+let gameRunning=false,animId=null,spawnTimer=null;
+let fallSpeed=0.32,spawnDelay=3200;
+let gameTimeSec=0,gameTimerInterval=null,lockedBubble=null;
+const wordTimestamps=[];
+let currentWPM=0,sessionWords=0,correctHits=0,totalAttempts=0;
+
 function updateLives(){ const el=$('lives-hud'); el.textContent=['♥','♥','♥'].map((_,i)=>i<lives?'♥':'♡').join(' '); el.style.color=lives===1?'#ff4757':lives===2?'#ff9f43':'#ff6eb4'; }
-function updateTimer(){
-  const p=lvlTimeLeft/lvlTotalTime;
-  $('ring-arc').style.strokeDashoffset=CIRC*(1-p);
-  $('timer-center').textContent=`${Math.floor(lvlTimeLeft/60)}:${(lvlTimeLeft%60).toString().padStart(2,'0')}`;
-  const c=p>0.5?'#ffe135':p>0.25?'#ff9f43':'#ff4757';
-  $('ring-arc').style.stroke=c; $('timer-center').style.color=c;
-  $('timer-center').className=lvlTimeLeft<=10?'tblink':'';
+
+function updateAccDisplay(){
+  const a=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0;
+  $('acc-display').textContent=a+'%';
+  $('acc-display').style.color=a>=80?'var(--green)':a>=50?'var(--orange)':'var(--danger)';
 }
+
+function tickGameTimer(){
+  if(!gameRunning) return;
+  gameTimeSec++;
+  $('timer-display').textContent=fmtTime(gameTimeSec);
+  // auto difficulty increase
+  const cfg=getSpeedForTime(gameTimeSec);
+  fallSpeed=cfg.speed; spawnDelay=cfg.spawn;
+  // show milestone banner every 30s
+  if(gameTimeSec>0 && gameTimeSec%30===0){
+    const banner=$('lvl-banner');
+    banner.innerHTML=`⚡ ${fmtTime(gameTimeSec)} — SPEEDING UP!`;
+    banner.style.display='block';banner.style.animation='none';void banner.offsetWidth;
+    banner.style.animation='lvl-pop 1.6s ease-out forwards';
+    setTimeout(()=>banner.style.display='none',1700);
+    scFlash('lvl');
+  }
+}
+
 function recordWord(){
   const now=Date.now(); wordTimestamps.push(now);
   while(wordTimestamps.length&&wordTimestamps[0]<now-60000) wordTimestamps.shift();
@@ -561,8 +621,10 @@ function popBubble(bObj,fx,fy){
   const cx=br.left-cr.left+br.width/2,cy=br.top-cr.top+br.height/2;
   fireDart(fx,fy,cx,cy,bObj.th.text,()=>{
     spawnConfetti(cx,cy,24);spawnRing(cx,cy,bObj.th.text);spawnRipple(cx,cy,bObj.r*2.2);scFlash('happy');
-    const pts=10*level;score+=pts;cleared++;sessionWords++;correctHits++;
+    const pts=10+Math.floor(gameTimeSec/30)*2; // more points the longer you survive
+    score+=pts;cleared++;sessionWords++;correctHits++;
     $('score').textContent=score;$('cleared').textContent=cleared;
+    updateAccDisplay();
     spawnScorePop(cx,cy,pts);recordWord();
     bObj.el.remove();const i=bubbles.indexOf(bObj);if(i>-1)bubbles.splice(i,1);lockedBubble=null;
   });
@@ -575,8 +637,10 @@ function onLetterClick(span,bObj,idx){
     const cr=canvas.getBoundingClientRect(),br=bObj.el.getBoundingClientRect();
     const cx=br.left-cr.left+br.width/2,cy=br.top-cr.top+br.height/2;
     spawnConfetti(cx,cy,20);spawnRing(cx,cy,bObj.th.text);
-    const pts=10*level;score+=pts;cleared++;sessionWords++;correctHits++;
+    const pts=10+Math.floor(gameTimeSec/30)*2;
+    score+=pts;cleared++;sessionWords++;correctHits++;
     $('score').textContent=score;$('cleared').textContent=cleared;
+    updateAccDisplay();
     spawnScorePop(cx,cy,pts);scFlash('happy');recordWord();
     setTimeout(()=>{if(bObj.el?.parentNode)bObj.el.remove();const i=bubbles.indexOf(bObj);if(i>-1)bubbles.splice(i,1);lockedBubble=null;},280);
   }
@@ -613,20 +677,57 @@ input.addEventListener('keydown',e=>{
   popBubble(t,canvas.offsetWidth/2,canvas.offsetHeight);
 });
 
-function startLevelTimer(){
-  clearInterval(lvlInterval);
-  const cfg=getLvl(level);lvlTimeLeft=cfg.dur;lvlTotalTime=cfg.dur;updateTimer();
-  lvlInterval=setInterval(()=>{ if(!gameRunning){clearInterval(lvlInterval);return;} lvlTimeLeft--;updateTimer(); if(lvlTimeLeft<=0){clearInterval(lvlInterval);advanceLevel();} },1000);
+function saveCurrentSession(){
+  if(!currentUser) return;
+  const pct=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0;
+  recordSession({name:currentUser,wpm:currentWPM,score,words:sessionWords,
+    correct:correctHits,attempts:totalAttempts,timeSec:gameTimeSec,
+    accuracy:pct,date:Date.now()});
 }
 
-function advanceLevel(){
-  saveCurrentSession(false); level++;
-  const cfg=getLvl(level);fallSpeed=cfg.speed;spawnDelay=cfg.spawn;
-  $('level-val').textContent=level; $('level-badge').textContent=`LVL ${level}`;
-  bubbles.forEach(b=>b.speed=clamp(b.speed+0.1,0.3,2));
-  const banner=$('lvl-banner'); banner.innerHTML=`🎊 LEVEL ${level}! 🎊`;banner.style.display='block';banner.style.animation='none';void banner.offsetWidth;banner.style.animation='lvl-pop 1.8s ease-out forwards';
-  setTimeout(()=>banner.style.display='none',1900);
-  scFlash('lvl');openLeaderboard(false);startLevelTimer();
+function startGame(){
+  if(!currentUser) return;
+  closeLeaderboard();
+  bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
+  score=0;lives=3;cleared=0;lockedBubble=null;
+  sessionWords=0;wordTimestamps.length=0;currentWPM=0;correctHits=0;totalAttempts=0;
+  gameTimeSec=0; fallSpeed=0.32; spawnDelay=3200;
+  $('score').textContent=0; $('cleared').textContent=0;
+  $('wpm-display').textContent=0; $('timer-display').textContent='0:00';
+  $('acc-display').textContent='0%';
+  updateLives();
+  $('overlay').style.display='none';
+  gameRunning=true; input.value=''; input.focus();
+  $('start-btn').textContent='RESTART 🔄';
+  cancelAnimationFrame(animId); clearTimeout(spawnTimer); clearInterval(gameTimerInterval);
+  gameTimerInterval=setInterval(tickGameTimer,1000);
+  spawnBubble(); animId=requestAnimationFrame(tick);
+}
+
+function endGame(silent=false){
+  gameRunning=false;
+  cancelAnimationFrame(animId); clearTimeout(spawnTimer); clearInterval(gameTimerInterval);
+  bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
+  if(!silent&&currentUser) saveCurrentSession();
+  if(silent) return;
+  const pct=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0;
+  const ov=$('overlay');
+  ov.innerHTML=`
+    <div class="ov-emoji">💀</div>
+    <div class="ov-title" style="font-size:38px;background:linear-gradient(135deg,var(--danger),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">GAME OVER</div>
+    <div class="ov-score">${score}</div>
+    <div style="display:flex;gap:14px;font-size:13px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center">
+      <span>⏱ Time <b style="color:var(--cyan)">${fmtTime(gameTimeSec)}</b></span>
+      <span>🚀 WPM <b style="color:var(--orange)">${currentWPM}</b></span>
+      <span>🎯 Accuracy <b style="color:var(--green)">${pct}%</b></span>
+      <span>🫧 Words <b style="color:var(--text)">${sessionWords}</b></span>
+    </div>
+    <p class="ov-tip">▶ Click START or check the leaderboard!</p>
+  `;
+  ov.style.display='flex';
+  $('start-btn').textContent='PLAY AGAIN 🎮';
+  input.value='';
+  setTimeout(()=>openLeaderboard(true),700);
 }
 
 function tick(){
@@ -656,38 +757,6 @@ function tick(){
     }
   }
   animId=requestAnimationFrame(tick);
-}
-
-function saveCurrentSession(survived){ if(!currentUser) return; recordSession({name:currentUser,wpm:currentWPM,score,words:sessionWords,correct:correctHits,attempts:totalAttempts,level,survived,date:Date.now()}); }
-
-function startGame(){
-  if(!currentUser) return;
-  closeLeaderboard();
-  bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
-  score=0;lives=3;cleared=0;level=1;lockedBubble=null;
-  sessionWords=0;wordTimestamps.length=0;currentWPM=0;correctHits=0;totalAttempts=0;
-  const cfg=getLvl(1);fallSpeed=cfg.speed;spawnDelay=cfg.spawn;
-  $('score').textContent=0;$('cleared').textContent=0;$('level-val').textContent=1;$('level-badge').textContent='LVL 1';$('wpm-display').textContent=0;
-  updateLives(); $('overlay').style.display='none';
-  gameRunning=true;input.value='';input.focus();
-  $('start-btn').textContent='RESTART 🔄';
-  cancelAnimationFrame(animId);clearTimeout(spawnTimer);clearInterval(lvlInterval);
-  spawnBubble();animId=requestAnimationFrame(tick);startLevelTimer();
-}
-
-function endGame(survived,silent=false){
-  gameRunning=false;
-  cancelAnimationFrame(animId);clearTimeout(spawnTimer);clearInterval(lvlInterval);
-  bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
-  if(!silent&&currentUser) saveCurrentSession(survived);
-  if(silent) return;
-  const pct=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0;
-  const ov=$('overlay');
-  ov.innerHTML=`<div class="ov-emoji">${survived?'🏆':'💀'}</div><div class="ov-title" style="font-size:38px;background:linear-gradient(135deg,${survived?'var(--cyan),var(--green)':'var(--danger),var(--pink)'});-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${survived?'SURVIVED!':'GAME OVER'}</div><div class="ov-score">${score}</div><div style="display:flex;gap:14px;font-size:13px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center"><span>WPM <b style="color:var(--orange)">${currentWPM}</b></span><span>Accuracy <b style="color:var(--green)">${pct}%</b></span><span>Words <b style="color:var(--text)">${sessionWords}</b></span><span>Level <b style="color:var(--text)">${level}</b></span></div><p class="ov-tip">▶ Click START or check the leaderboard!</p>`;
-  ov.style.display='flex';
-  $('start-btn').textContent='PLAY AGAIN 🎮';
-  input.value='';
-  setTimeout(()=>openLeaderboard(true),700);
 }
 
 // deco bubbles
