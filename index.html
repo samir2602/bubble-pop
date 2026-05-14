@@ -258,10 +258,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div id="overlay">
       <div class="ov-emoji">🫧</div>
       <div class="ov-title">BUBBLE POP</div>
-      <p class="ov-sub">Type the word · Press ENTER to fire a dart! 🎯<br>Survive the timer to level up!</p>
+      <p class="ov-sub">Type the word · Press ENTER to fire a dart! 🎯<br>Words get harder as you survive longer!</p>
       <div class="ov-lvl-info">
-        <span>🟢 Lvl 1 · 3:00</span><span>🟡 Lvl 2 · 2:30</span>
-        <span>🟠 Lvl 3 · 2:00</span><span>🔴 Lvl 4+ · faster!</span>
+        <span>🟢 0:00 Easy</span><span>🟠 1:00 Medium</span>
+        <span>🔥 3:00 Hard</span><span>💀 5:00 Expert</span>
       </div>
       <p class="ov-tip">▶ Click START or press any key!</p>
     </div>
@@ -485,15 +485,250 @@ async function init(){
   ];
   function getSpeed(sec){ let c=SPEED_STEPS[0]; for(const s of SPEED_STEPS){ if(sec>=s.atSec)c=s; else break; } return c; }
 
-  const WORDS=['apple','brave','cloud','dance','eagle','flame','grace','happy','ionic','jolly','karma','lemon','magic','noodle','ocean','pizza','queen','robin','sunny','tulip','bloom','crisp','enjoy','fizzy','honey','indie','jumpy','kitty','lolly','mango','nifty','olive','poppy','rapid','smile','tasty','whirl','amber','bliss','cozy','dizzy','funky','goofy','hyper','zippy','vivid','quirk','witty','zesty','daffy','boost'];
+  // ── Word pools by difficulty ───────────────────────────
+  // Easy: 3-4 letters  |  Medium: 5-6 letters  |  Hard: 7-8 letters  |  Expert: 9+ letters
+  const WORD_POOLS = {
+    easy: [
+      'ace','add','age','ago','aim','air','all','arm','art','ask',
+      'bad','bag','ban','bar','bat','bay','bed','big','bit','box',
+      'boy','bug','bus','buy','can','cap','car','cat','cop','cow',
+      'cry','cup','cut','dad','day','did','dig','dog','dot','dry',
+      'ear','eat','egg','end','eye','fan','far','fat','few','fit',
+      'fly','fog','for','fox','fun','gap','gas','get','god','got',
+      'gun','gut','guy','gym','had','ham','has','hat','hay','her',
+      'hit','hop','hot','how','hug','hut','ice','ill','ink','ion',
+      'jab','jag','jam','jar','jaw','jet','job','jog','joy','jug',
+      'key','kid','kit','lab','lag','lap','law','lay','leg','let',
+      'lid','lip','log','lot','low','mad','map','mat','mix','mob',
+      'mom','mud','mug','nap','net','nod','nor','now','nun','nut',
+      'oak','odd','off','oil','old','one','opt','orb','our','out',
+      'own','pad','pan','pat','pay','peg','pen','pet','pie','pig',
+      'pin','pit','pop','pot','pro','pub','pun','put','raw','ray',
+      'red','ref','rep','rid','rig','rip','rob','rod','rot','row',
+      'rub','rug','rum','run','rut','sad','sag','sat','saw','say',
+      'set','shy','sin','sip','sit','ski','sky','sly','sob','son',
+      'sow','spa','spy','sty','sub','sue','sum','sun','tab','tag',
+      'tan','tap','tar','tax','tea','ten','the','tie','tin','tip',
+      'toe','ton','top','toy','try','tub','tug','two','urn','use',
+      'van','vat','via','vie','vim','vow','war','was','wax','web',
+      'wed','wet','who','why','wig','win','wit','woe','wok','won',
+      'woo','wow','yam','yap','yaw','yes','yet','yew','you','zap',
+      'bake','ball','band','bank','bare','barn','base','bash','bath',
+      'bead','beam','bean','bear','beat','been','bell','belt','bend',
+      'best','bind','bite','blow','blue','blur','boil','bold','bolt',
+      'bond','bone','book','boom','boot','born','boss','both','brag',
+      'bray','brew','brow','buck','buff','bulk','bull','bump','burn',
+      'burp','cage','cake','call','calm','came','cape','card','care',
+      'cash','cast','cave','cell','chef','chip','chop','clap','clay',
+      'clip','club','clue','coal','coat','code','coil','cold','comb',
+      'come','cook','cool','cope','cord','core','cost','cozy','crab',
+      'crop','crow','cube','cure','curl','cute','dark','dart','dash',
+      'data','date','dawn','dead','deaf','deal','dear','deck','deep',
+      'deer','deny','desk','dial','dice','diet','dime','dine','dirt',
+      'disc','dish','disk','dive','dock','does','done','door','dope',
+      'dorm','dote','dove','down','drag','draw','drip','drop','drum',
+      'dual','dude','dull','dump','dune','dusk','dust','each','earl',
+      'earn','ease','east','edge','emit','epic','even','evil','exam',
+      'exit','face','fact','fail','fair','fall','fame','fast','fate',
+      'feel','feet','fell','felt','file','fill','film','find','fire',
+      'firm','fish','fist','five','flag','flat','flaw','flea','flew',
+      'flip','flow','foam','fold','folk','font','food','fool','foot',
+      'ford','fore','fork','form','fort','foul','four','free','frog',
+      'from','fuel','full','fume','fuse','fuzz','gain','gale','gall',
+      'game','gang','gave','gaze','gear','gene','germ','gift','give',
+      'glad','glee','glob','glow','glue','goal','goes','gold','golf',
+      'gone','good','goon','gore','gust','guts','hack','hail','hair',
+      'half','hall','halt','hand','hang','hard','harm','harp','hash',
+      'haul','have','hawk','haze','head','heal','heap','hear','heat',
+      'heel','heft','held','helm','help','hemp','here','hero','hide',
+      'high','hill','hint','hire','hold','hole','home','hone','hood',
+      'hook','hope','horn','host','hour','howl','hulk','hull','hump',
+      'hunt','hurt','idea','idle','inch','into','iron','isle','itch',
+    ],
+    medium: [
+      'abbey','abide','ablaze','about','above','abuse','abyss','accuse',
+      'ached','acorn','acres','actor','acute','adept','admit','adobe',
+      'adopt','adore','adult','after','again','agile','agree','ahead',
+      'alarm','album','alert','algae','alibi','align','alive','alley',
+      'allot','allow','alone','aloof','aloud','alpha','alter','amber',
+      'amble','amend','angel','anger','angle','angry','angst','anime',
+      'ankle','annoy','antic','anvil','apart','apple','apply','arena',
+      'argue','arise','armor','aroma','arose','array','arson','aside',
+      'atlas','atone','attic','audio','audit','augur','avail','avert',
+      'avoid','awake','award','aware','awful','badge','badly','baker',
+      'based','basic','basis','batch','beach','began','begin','being',
+      'below','bench','bible','birch','birds','birth','bison','black',
+      'blade','blame','bland','blank','blast','blaze','bleak','bleed',
+      'blend','bless','blind','bliss','block','blood','bloom','blown',
+      'board','bogus','bonus','boost','booth','bored','bound','boxer',
+      'brace','braid','brain','brake','brand','brave','bread','break',
+      'brick','bride','brief','brine','bring','broad','broke','brook',
+      'broom','broth','brown','brush','brute','buddy','build','built',
+      'bulge','bully','bunch','bunny','burst','butte','buyer','bylaw',
+      'cabin','cable','cadet','camel','candy','cargo','carry','catch',
+      'cause','cedar','chain','chair','chalk','chaos','chase','cheap',
+      'cheat','check','cheek','cheer','chess','chest','chief','child',
+      'chill','choir','chord','chunk','civic','civil','claim','clang',
+      'clash','class','clean','clear','clerk','click','cliff','climb',
+      'cling','clock','clone','close','cloud','clown','coach','cobra',
+      'comet','comic','comma','conch','coral','count','cover','craft',
+      'crane','crash','crawl','creak','creed','creek','crisp','cross',
+      'crown','crude','cruel','crush','crust','crypt','cubic','curly',
+      'curse','curve','cycle','cynic','daily','dance','daunt','decay',
+      'decoy','decry','delta','demon','dense','depot','depth','derby',
+      'devil','dirty','disco','dizzy','dodge','doing','donor','doubt',
+      'dough','dowel','dowry','draft','drain','drape','drawl','dread',
+      'dream','dress','dried','drift','drill','drink','drive','droit',
+      'drone','drool','drove','drown','druid','dryer','duchy','dummy',
+      'dunce','dwarf','dwell','dying','eager','eagle','early','earth',
+      'eight','elite','ember','empty','enemy','enjoy','enter','envoy',
+      'equal','equip','erode','error','essay','ether','evade','event',
+      'every','exact','exile','exist','extra','fable','facet','fairy',
+      'faith','false','fancy','farce','feast','feign','fence','ferry',
+      'fever','fewer','fiber','field','fiend','fiery','fifth','fifty',
+      'fight','final','first','fixed','flair','flame','flank','flare',
+      'flash','flask','flaw','fleet','flesh','flint','flock','flood',
+      'floor','flora','floss','flour','flout','flower','fluid','flunk',
+      'flute','focal','foray','forge','forte','forum','found','franc',
+      'frank','fraud','freak','freed','fresh','front','froth','froze',
+      'fruit','fully','fungi','funky','funny','furry','fuzzy','gaffe',
+      'gamer','gauze','gauzy','gauze','gavel','gauze','gauze','gauze',
+      'gecko','genre','ghost','giant','giddy','given','gizmo','glare',
+      'glass','gleam','glide','gloom','glory','gloss','glove','gnome',
+      'going','grace','grade','grain','grand','grant','grape','grasp',
+      'grass','grate','graze','greed','green','grief','grind','groan',
+      'grope','gross','group','grove','growl','gruel','gruff','guard',
+      'guava','guide','guild','guile','guise','gusto','gutsy','gypsy',
+      'habit','happy','harsh','haste','haunt','haven','havoc','hazard',
+      'heart','heavy','hedge','heist','hence','herbs','heron','hinge',
+      'hippo','hitch','hoard','hobby','holly','honor','hornet','horse',
+      'hotel','hound','human','humid','humor','hurry','hyena','hyper',
+    ],
+    hard: [
+      'ability','absence','account','achieve','acquire','actions',
+      'address','advance','affable','against','amazing','another',
+      'anxious','applied','appoint','approve','arrange','article',
+      'assault','attract','attempt','attract','balance','battery',
+      'benefit','between','blossom','cabinet','capable','captain',
+      'captain','careful','careful','caution','ceiling','certain',
+      'chapter','charged','charity','checked','chicken','climate',
+      'closely','cluster','collect','combine','comfort','command',
+      'comment','company','compete','complex','conduct','confirm',
+      'connect','contact','content','control','convert','correct',
+      'courage','covered','culture','current','customs','cyanide',
+      'cycling','danger','darling','dealing','decided','defense',
+      'deliver','depends','despite','destroy','develop','digital',
+      'discuss','display','distant','dolphin','dynamic','earnest',
+      'eastern','enforce','enhance','enhance','episode','essence',
+      'examine','examine','example','exclude','explore','extreme',
+      'factory','fantasy','fashion','feature','feeling','fiction',
+      'fitness','foolish','foreign','forward','freedom','furnish',
+      'genuine','glamour','globule','goodbye','gorilla','granted',
+      'graphic','gravity','habitat','highest','holiday','horizon',
+      'hostile','however','hunting','iceberg','imagine','immense',
+      'improve','include','inflame','initial','insight','inspect',
+      'instead','intense','involve','journey','justice','keeping',
+      'kitchen','lasting','learned','lecture','library','limited',
+      'loyalty','machine','massive','meaning','medical','mention',
+      'message','million','mineral','minimum','miracle','mission',
+      'mistake','monster','mystery','nothing','numbers','observe',
+      'obvious','offline','opinion','organic','outcome','outline',
+      'outside','onwards','package','paradox','passion','pattern',
+      'perfect','phantom','picture','plastic','plateau','popular',
+      'prepare','primary','process','produce','program','promise',
+      'propose','protect','provide','publish','quality','quickly',
+      'radical','rapidly','reaches','reality','receive','release',
+      'replace','require','resolve','respect','results','revenue',
+      'reverse','rewards','rhythms','roughly','scatter','section',
+      'segment','serious','service','session','several','similar',
+      'sliding','society','someone','sparrow','species','stadium',
+      'strange','student','subject','succeed','suggest','sunrise',
+      'support','surface','survive','suspect','swiftly','systems',
+      'tactics','teacher','texture','thought','through','tonight',
+      'tourism','towards','tracker','trading','triumph','trouble',
+      'turning','typical','uniform','unknown','upgrade','urgency',
+      'venture','version','village','waiting','warrior','weather',
+      'website','western','willing','windsor','working','workout',
+      'worried','wrangle','younger','zealous','zombie','zoology',
+    ],
+    expert: [
+      'abundance','academic','accident','accurate','achieved',
+      'activated','addition','adequate','adjusted','advantage',
+      'afternoon','ambitious','amplitude','analytics','announce',
+      'annually','anything','apartment','appetite','appliance',
+      'architect','arranged','assurance','attention','attribute',
+      'automatic','available','awareness','beautiful','benchmark',
+      'breakdown','brilliant','broadcast','calculate','challenge',
+      'character','classroom','collected','community','comparing',
+      'competent','confident','connected','construct','consulate',
+      'consuming','continual','customize','dangerous','dedicated',
+      'described','designing','different','discovery','displaced',
+      'displayed','elaborate','emotional','encourage','energized',
+      'establish','everybody','excellent','exchanged','exclusive',
+      'framework','generated','happening','highlight','important',
+      'impressed','increased','indicated','indicator','inspiring',
+      'integrate','interested','introduce','inventory','invisible',
+      'landscape','leadership','listening','marketing','mechanism',
+      'memorable','milestone','motivated','multiplied','necessary',
+      'objective','optimized','organized','otherwise','otherwise',
+      'ownership','packaging','paragraph','performed','permitted',
+      'persuaded','potential','practiced','precision','prevented',
+      'principal','procedure','projected','providing','qualified',
+      'realistic','recommend','recovered','regarding','renewable',
+      'represent','requested','resilient','resources','rewarding',
+      'satellite','scheduled','scattered','sensitive','separated',
+      'simplicity','simulated','situation','something','sometimes',
+      'somewhere','specified','stimulate','strategic','structured',
+      'submitted','subscribe','succeeded','suggested','supported',
+      'surprises','sustained','symmetric','technical','technique',
+      'therefore','thousands','translate','treatment','triggered',
+      'triggered','unlimited','validated','variables','venturing',
+      'versatile','virtually','volunteer','workspace','worldwide',
+    ],
+  };
+
+  // Pick a word based on how long the player has survived
+  function rndWord(){
+    const t = gameTimeSec;
+    let pool;
+    if(t < 30){
+      // 0–30s: only easy (3-4 letter)
+      pool = WORD_POOLS.easy;
+    } else if(t < 60){
+      // 30–60s: mostly easy, some medium
+      pool = Math.random()<0.75 ? WORD_POOLS.easy : WORD_POOLS.medium;
+    } else if(t < 120){
+      // 60–120s: mix easy + medium
+      pool = Math.random()<0.4 ? WORD_POOLS.easy : WORD_POOLS.medium;
+    } else if(t < 180){
+      // 120–180s: mostly medium, some hard
+      pool = Math.random()<0.6 ? WORD_POOLS.medium : WORD_POOLS.hard;
+    } else if(t < 300){
+      // 180–300s: mix medium + hard
+      pool = Math.random()<0.3 ? WORD_POOLS.medium : WORD_POOLS.hard;
+    } else {
+      // 300s+: hard + expert
+      pool = Math.random()<0.5 ? WORD_POOLS.hard : WORD_POOLS.expert;
+    }
+    return pool[Math.floor(Math.random()*pool.length)];
+  }
+
   const THEMES=[{fill:'rgba(0,229,255,0.18)',stroke:'rgba(0,229,255,0.7)',glow:'rgba(0,229,255,0.4)',text:'#00e5ff'},{fill:'rgba(255,110,180,0.18)',stroke:'rgba(255,110,180,0.7)',glow:'rgba(255,110,180,0.4)',text:'#ff6eb4'},{fill:'rgba(255,225,53,0.18)',stroke:'rgba(255,225,53,0.7)',glow:'rgba(255,225,53,0.4)',text:'#ffe135'},{fill:'rgba(77,255,145,0.18)',stroke:'rgba(77,255,145,0.7)',glow:'rgba(77,255,145,0.4)',text:'#4dff91'},{fill:'rgba(255,159,67,0.18)',stroke:'rgba(255,159,67,0.7)',glow:'rgba(255,159,67,0.4)',text:'#ff9f43'},{fill:'rgba(199,125,255,0.18)',stroke:'rgba(199,125,255,0.7)',glow:'rgba(199,125,255,0.4)',text:'#c77dff'}];
   const CONFETTI=['#ff6eb4','#00e5ff','#ffe135','#4dff91','#ff9f43','#c77dff','#fff'];
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const rnd=(a,b)=>a+Math.random()*(b-a);
-  const rndWord=()=>WORDS[Math.floor(Math.random()*WORDS.length)];
   const rndTheme=()=>THEMES[Math.floor(Math.random()*THEMES.length)];
-  function scFlash(t){flashEl.className='';void flashEl.offsetWidth;flashEl.className=t}
 
+  function getDifficultyLabel(sec){
+    if(sec<30)  return '🟢 Easy';
+    if(sec<60)  return '🟡 Easy+';
+    if(sec<120) return '🟠 Medium';
+    if(sec<180) return '🔴 Medium+';
+    if(sec<300) return '🔥 Hard';
+    return '💀 Expert';
+  }
+
+  function scFlash(t){flashEl.className='';void flashEl.offsetWidth;flashEl.className=t}
   function updateLives(){ const el=$('lives-hud'); el.textContent=['♥','♥','♥'].map((_,i)=>i<lives?'♥':'♡').join(' '); el.style.color=lives===1?'#ff4757':lives===2?'#ff9f43':'#ff6eb4'; }
   function updateAccDisplay(){ const a=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0; $('acc-display').textContent=a+'%'; $('acc-display').style.color=a>=80?'var(--green)':a>=50?'var(--orange)':'var(--danger)'; }
 
@@ -503,7 +738,7 @@ async function init(){
     $('timer-display').textContent=fmtTime(gameTimeSec);
     const cfg=getSpeed(gameTimeSec); fallSpeed=cfg.speed; spawnDelay=cfg.spawn;
     if(gameTimeSec>0&&gameTimeSec%30===0){
-      const b=$('lvl-banner'); b.innerHTML=`⚡ ${fmtTime(gameTimeSec)} — FASTER!`;
+      const b=$('lvl-banner'); b.innerHTML=`${getDifficultyLabel(gameTimeSec)}<br><span style="font-size:20px">⚡ ${fmtTime(gameTimeSec)}</span>`;
       b.style.display='block'; b.style.animation='none'; void b.offsetWidth;
       b.style.animation='lvl-pop 1.6s ease-out forwards';
       setTimeout(()=>b.style.display='none',1700); scFlash('lvl');
