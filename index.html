@@ -892,9 +892,61 @@ async function init(){
     popBubble(t,canvas.offsetWidth/2,canvas.offsetHeight);
   });
 
+  // ── Pause / Resume ────────────────────────────────────
+  let gamePaused = false;
+
+  function pauseGame(){
+    if(!gameRunning || gamePaused) return;
+    gamePaused = true;
+    cancelAnimationFrame(animId);
+    clearTimeout(spawnTimer);
+    clearInterval(gameTimerInterval);
+    // freeze all bubbles in place
+    bubbles.forEach(b=>{ b.el.style.animationPlayState='paused'; });
+    // show pause overlay on canvas
+    const pov = document.createElement('div');
+    pov.id = 'pause-overlay';
+    pov.style.cssText = `
+      position:absolute;inset:0;z-index:25;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+      background:rgba(10,10,20,0.75);border-radius:18px;backdrop-filter:blur(6px);
+    `;
+    pov.innerHTML = `
+      <div style="font-size:44px">⏸️</div>
+      <div style="font-family:'Fredoka One';font-size:32px;color:#00e5ff;letter-spacing:3px">PAUSED</div>
+      <div style="font-size:13px;color:#8899bb;font-weight:700;letter-spacing:1px">Switch back to continue</div>
+    `;
+    canvas.appendChild(pov);
+  }
+
+  function resumeGame(){
+    if(!gameRunning || !gamePaused) return;
+    gamePaused = false;
+    // remove pause overlay
+    const pov = document.getElementById('pause-overlay');
+    if(pov) pov.remove();
+    // restart all timers
+    gameTimerInterval = setInterval(tickGameTimer, 1000);
+    spawnBubble();
+    animId = requestAnimationFrame(tick);
+  }
+
+  // Listen for tab visibility change
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden){
+      pauseGame();
+    } else {
+      resumeGame();
+    }
+  });
+
+  // Also pause when window loses focus
+  window.addEventListener('blur', pauseGame);
+  window.addEventListener('focus', resumeGame);
+
   // ── Game loop ─────────────────────────────────────────
   function tick(){
-    if(!gameRunning) return;
+    if(!gameRunning || gamePaused) return;
     const ch=canvas.offsetHeight;
     for(let i=bubbles.length-1;i>=0;i--){
       const b=bubbles[i]; if(!b.el.parentNode){bubbles.splice(i,1);continue;}
@@ -925,7 +977,7 @@ async function init(){
     bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
     score=0;lives=3;cleared=0;lockedBubble=null;
     sessionWords=0;wordTimestamps.length=0;currentWPM=0;correctHits=0;totalAttempts=0;
-    gameTimeSec=0;fallSpeed=0.32;spawnDelay=3200;
+    gameTimeSec=0;fallSpeed=0.32;spawnDelay=3200;gamePaused=false;
     $('score').textContent=0;$('cleared').textContent=0;
     $('wpm-display').textContent=0;$('timer-display').textContent='0:00';$('acc-display').textContent='0%';
     // reset background
@@ -940,8 +992,9 @@ async function init(){
   }
 
   function endGame(silent=false){
-    gameRunning=false;
+    gameRunning=false; gamePaused=false;
     cancelAnimationFrame(animId);clearTimeout(spawnTimer);clearInterval(gameTimerInterval);
+    const pov=document.getElementById('pause-overlay'); if(pov) pov.remove();
     bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
     if(!silent&&currentUser) saveCurrentSession();
     if(silent) return;
