@@ -213,8 +213,21 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 @keyframes db{0%{transform:translateY(0) scale(1);opacity:.4}50%{opacity:.7;transform:translateY(-28px) scale(1.04)}100%{transform:translateY(0) scale(1);opacity:.4}}
 .wpm-flash{position:absolute;top:10px;left:14px;font-family:'Fredoka One';font-size:13px;color:var(--orange);animation:sfloat 1.2s ease-out forwards;z-index:12;pointer-events:none}
 
-/* combo banner */
-.combo-pop{
+/* personal best banner */
+#pb-banner{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  font-family:'Fredoka One';font-size:30px;
+  letter-spacing:3px;text-align:center;
+  pointer-events:none;z-index:16;display:none;
+  line-height:1.3;
+}
+@keyframes pb-pop{
+  0%  {opacity:0;transform:translate(-50%,-50%) scale(0.3)}
+  20% {opacity:1;transform:translate(-50%,-50%) scale(1.15)}
+  70% {opacity:1;transform:translate(-50%,-55%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-65%) scale(0.9)}
+}
   position:absolute;pointer-events:none;z-index:13;
   font-family:'Fredoka One';text-align:center;line-height:1.1;
   animation:combo-anim 1.1s ease-out forwards;
@@ -305,6 +318,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
     <div class="danger-wave"></div>
     <div id="level-badge">LVL 1</div>
     <div id="lvl-banner"></div>
+    <div id="pb-banner"></div>
     <div id="combo-hud"></div>
     <div id="overlay">
       <div class="ov-emoji">🫧</div>
@@ -1103,6 +1117,45 @@ async function init(){
     animId=requestAnimationFrame(tick);
   }
 
+  // ── Personal best check ───────────────────────────────
+  function getPersonalBest(){
+    const sessions = LS.getSessions(currentUser);
+    if(!sessions.length) return {time:0, score:0};
+    return {
+      time:  Math.max(...sessions.map(s=>s.timeSec||0)),
+      score: Math.max(...sessions.map(s=>s.score||0)),
+    };
+  }
+
+  function showPBBanner(isNewTime, isNewScore){
+    const banner = $('pb-banner');
+    if(!isNewTime && !isNewScore) return;
+    let text, color;
+    if(isNewTime && isNewScore){
+      text  = '🏆 NEW RECORD!\nBest Time & Score!';
+      color = '#ffe135';
+    } else if(isNewTime){
+      text  = '⏱️ NEW BEST TIME!';
+      color = '#00e5ff';
+    } else {
+      text  = '⭐ NEW HIGH SCORE!';
+      color = '#4dff91';
+    }
+    banner.innerHTML = text.replace('\n','<br>');
+    banner.style.cssText = `
+      position:absolute;top:50%;left:50%;
+      transform:translate(-50%,-50%);
+      font-family:'Fredoka One';font-size:28px;
+      letter-spacing:3px;text-align:center;
+      color:${color};
+      text-shadow:0 0 30px ${color}, 0 0 60px ${color}55;
+      pointer-events:none;z-index:16;display:block;
+      animation:pb-pop 2.5s ease-out forwards;
+      line-height:1.4;
+    `;
+    setTimeout(()=>{ banner.style.display='none'; }, 2600);
+  }
+
   // ── Start / End ───────────────────────────────────────
   function saveCurrentSession(){
     if(!currentUser) return;
@@ -1136,13 +1189,46 @@ async function init(){
     cancelAnimationFrame(animId);clearTimeout(spawnTimer);clearInterval(gameTimerInterval);
     const pov=document.getElementById('pause-overlay'); if(pov) pov.remove();
     bubbles.forEach(b=>{if(b.el?.parentNode)b.el.remove();}); bubbles=[];
-    if(!silent&&currentUser) saveCurrentSession();
     if(silent) return;
+
+    // Check personal best BEFORE saving
+    const pb = getPersonalBest();
+    const isNewTime  = gameTimeSec > (pb.time||0);
+    const isNewScore = score > (pb.score||0);
+
+    if(currentUser) saveCurrentSession();
+
     const pct=totalAttempts>0?Math.round(correctHits/totalAttempts*100):0;
+
+    // Show PB banner briefly before game over screen
+    if(isNewTime || isNewScore){
+      showPBBanner(isNewTime, isNewScore);
+    }
+
+    const newRecordBadge = isNewTime || isNewScore
+      ? `<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,225,53,0.15);border:1.5px solid var(--yellow);border-radius:10px;padding:5px 14px;font-size:12px;font-weight:800;color:var(--yellow);letter-spacing:1px;margin-bottom:4px">
+          🏆 ${isNewTime&&isNewScore?'NEW TIME + SCORE RECORD!':isNewTime?'NEW BEST TIME!':'NEW HIGH SCORE!'}
+         </div>`
+      : '';
+
     const ov=$('overlay');
-    ov.innerHTML=`<div class="ov-emoji">💀</div><div class="ov-title" style="font-size:38px;background:linear-gradient(135deg,var(--danger),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">GAME OVER</div><div class="ov-score">${score}</div><div style="display:flex;gap:14px;font-size:13px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center"><span>⏱ Time <b style="color:var(--cyan)">${fmtTime(gameTimeSec)}</b></span><span>🚀 WPM <b style="color:var(--orange)">${currentWPM}</b></span><span>🎯 Accuracy <b style="color:var(--green)">${pct}%</b></span><span>🫧 Words <b style="color:var(--text)">${sessionWords}</b></span></div><p class="ov-tip">▶ Click START or check the leaderboard!</p>`;
-    ov.style.display='flex';$('start-btn').textContent='PLAY AGAIN 🎮';input.value='';
-    setTimeout(()=>openLeaderboard(true),700);
+    ov.innerHTML=`
+      <div class="ov-emoji">💀</div>
+      <div class="ov-title" style="font-size:38px;background:linear-gradient(135deg,var(--danger),var(--pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">GAME OVER</div>
+      ${newRecordBadge}
+      <div class="ov-score">${score}</div>
+      <div style="display:flex;gap:14px;font-size:13px;color:var(--muted);font-weight:700;flex-wrap:wrap;justify-content:center">
+        <span>⏱ Time <b style="color:var(--cyan)">${fmtTime(gameTimeSec)}</b></span>
+        <span>🚀 WPM <b style="color:var(--orange)">${currentWPM}</b></span>
+        <span>🎯 Acc <b style="color:var(--green)">${pct}%</b></span>
+        <span>🫧 Words <b style="color:var(--text)">${sessionWords}</b></span>
+      </div>
+      <p class="ov-tip">▶ Click START or check the leaderboard!</p>
+    `;
+    ov.style.display='flex';
+    $('start-btn').textContent='PLAY AGAIN 🎮';
+    input.value='';
+    setTimeout(()=>openLeaderboard(true), isNewTime||isNewScore ? 2800 : 700);
   }
 
   // ── Deco bubbles ──────────────────────────────────────
